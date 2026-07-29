@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+
+  --bg-page: #0d0d0d;
+  --bg-surface: #1a1a19;
+  --bg-surface-raised: #232322;
+
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+
+  --border-hairline: rgba(255, 255, 255, 0.1);
+
+  --accent: #3987e5;
+  --good: #0ca30c;
+  --critical: #e66767;
+  --warning: #fab219;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--accent);
+  color: white;
+}
+
+.gate-background {
+  background-color: var(--bg-page);
+  background-image:
+    radial-gradient(ellipse 60% 50% at 50% 0%, rgba(57, 135, 229, 0.16), transparent 70%),
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    40px 40px,
+    40px 40px;
+}
+
+.gate-logo-mark {
+  position: absolute;
+  color: var(--accent);
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+@keyframes gate-pulse {
+  0%,
+  100% {
+    opacity: 0.05;
+  }
+  50% {
+    opacity: 0.09;
+  }
+}
+
+.gate-logo-mark {
+  animation: gate-pulse 6s ease-in-out infinite;
+}

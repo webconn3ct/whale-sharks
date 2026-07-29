@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: whale-sharks-api
+    env: python
+    plan: starter
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt && alembic upgrade head"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_DIRECT
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: "https://whale-sharks.onrender.com"
+      - key: COOKIE_SAMESITE
+        value: "none"
+      - key: COOKIE_SECURE
+        value: "true"
+
+  - type: web
+    name: whale-sharks
+    env: static
+    rootDir: frontend
+    buildCommand: "npm install && npm run build"
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: "https://whale-sharks-api.onrender.com"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
