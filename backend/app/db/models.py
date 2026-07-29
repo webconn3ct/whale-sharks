@@ -158,6 +158,9 @@ class ConsensusPositionTrader(Base):
     # Wider than the price columns above — a trader who entered at a few cents
     # can show a percent gain in the thousands, unlike price/probability fields.
     percent_pnl: Mapped[float] = mapped_column(Numeric(14, 6))
+    # trader_weight at scan time — lets smaller top-N cuts be re-scored from
+    # this stored (top_n=100) data without re-fetching track records.
+    trader_weight: Mapped[float] = mapped_column(Numeric(18, 6))
 
     consensus_position: Mapped["ConsensusPosition"] = relationship(back_populates="traders")
     trader: Mapped["Trader"] = relationship()

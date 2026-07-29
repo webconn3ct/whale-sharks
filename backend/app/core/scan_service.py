@@ -4,7 +4,7 @@ import logging
 from app.config import Settings
 from app.core import cache as cache_module
 from app.core.consensus_engine import (
-    TOP_N_OPTIONS,
+    CANONICAL_TOP_N,
     TrackRecord,
     Variant,
     build_consensus_groups,
@@ -93,20 +93,22 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
         await repository.insert_leaderboard_ranks(session, scan_id, traders, trader_ids)
         await repository.upsert_track_records(session, new_track_records, trader_ids)
 
-        # Build and persist one (variant, top_n) bucket at a time rather than
-        # holding all 25 full result sets in memory at once — with
-        # leaderboard_size=100 that peak was large enough to OOM a 512MB instance.
-        combined_top25_count = 0
+        # Only the widest cut (top_n=CANONICAL_TOP_N) is computed/persisted per
+        # variant — smaller top-N cuts are derived from it at snapshot-load
+        # time (see repository.load_latest_snapshot), since a trader
+        # qualifying for a smaller cut always also qualifies for this one.
+        # Persisting all 5 cuts independently multiplied scan write volume 5x
+        # for no benefit and blew past a gigabyte of DB storage in under a day.
+        combined_top_count = 0
         for variant in Variant:
-            for top_n in TOP_N_OPTIONS:
-                groups = build_consensus_groups(
-                    traders, positions_by_wallet, variant, top_n, track_records, value_normalizer, max_value_boost
-                )
-                if variant == Variant.COMBINED and top_n == 25:
-                    combined_top25_count = len(groups)
-                await repository.insert_consensus_groups(session, scan_id, variant, top_n, groups, trader_ids)
-                del groups
-                logger.info("checkpoint: persisted bucket variant=%s top_n=%d", variant, top_n)
+            groups = build_consensus_groups(
+                traders, positions_by_wallet, variant, CANONICAL_TOP_N, track_records, value_normalizer, max_value_boost
+            )
+            if variant == Variant.COMBINED:
+                combined_top_count = len(groups)
+            await repository.insert_consensus_groups(session, scan_id, variant, CANONICAL_TOP_N, groups, trader_ids)
+            del groups
+            logger.info("checkpoint: persisted bucket variant=%s top_n=%d", variant, CANONICAL_TOP_N)
 
         await repository.complete_scan(
             session, scan_id, traders_count=len(traders), positions_count=active_positions, total_value=total_value
@@ -125,12 +127,13 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
         cache_module.cache.refresh(snapshot)
 
     logger.info(
-        "scan %s completed: %d traders, %d positions, %d combined/top25 consensus groups, "
+        "scan %s completed: %d traders, %d positions, %d combined/top%d consensus groups, "
         "%d fresh track records",
         scan_id,
         len(traders),
         active_positions,
-        combined_top25_count,
+        combined_top_count,
+        CANONICAL_TOP_N,
         len(new_track_records),
     )
 

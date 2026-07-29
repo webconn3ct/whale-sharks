@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select
@@ -7,7 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.schemas import ConsensusRowOut, ConsensusSnapshot, HolderOut, variant_key
-from app.core.consensus_engine import ConsensusGroup, Trader, TrackRecord, Variant
+from app.core.consensus_engine import (
+    CANONICAL_TOP_N,
+    TOP_N_OPTIONS,
+    VARIANT_TO_TIMEFRAME,
+    ConsensusGroup,
+    Trader,
+    TrackRecord,
+    Variant,
+    score_from_weight_and_value,
+)
 from app.db.models import (
     AppConfig,
     ConsensusPosition,
@@ -280,6 +290,7 @@ async def insert_consensus_groups(
                     "current_price": pos.cur_price,
                     "cash_pnl": pos.cash_pnl,
                     "percent_pnl": pos.percent_pnl,
+                    "trader_weight": holding.weight,
                 }
             )
     await _bulk_insert(session, ConsensusPositionTrader.__table__, trader_rows)
@@ -318,6 +329,14 @@ async def prune_old_scans(session: AsyncSession, retention_days: int) -> int:
     return result.rowcount or 0
 
 
+def _qualifies_for_cut(ranks: dict[str, int], variant: Variant, top_n: int) -> bool:
+    timeframe = VARIANT_TO_TIMEFRAME[variant]
+    if timeframe is None:  # combined: qualifies if top_n on ANY leaderboard
+        return any(rank <= top_n for rank in ranks.values())
+    rank = ranks.get(timeframe.value)
+    return rank is not None and rank <= top_n
+
+
 async def load_latest_snapshot(session: AsyncSession) -> ConsensusSnapshot | None:
     scan_row = await session.execute(
         select(Scan).where(Scan.status == ScanStatus.COMPLETED).order_by(Scan.completed_at.desc()).limit(1)
@@ -326,64 +345,98 @@ async def load_latest_snapshot(session: AsyncSession) -> ConsensusSnapshot | Non
     if scan is None:
         return None
 
+    config = await get_app_config(session)
+    value_normalizer = float(config.value_normalizer) if config else 6.0
+    max_value_boost = float(config.max_value_boost) if config else 1.0
+
+    # Only the widest (top_n=CANONICAL_TOP_N) cut is ever persisted per variant
+    # — smaller cuts are derived below, since a trader qualifying for a
+    # smaller top-N always also qualifies for this one.
     positions_result = await session.execute(
         select(ConsensusPosition)
-        .where(ConsensusPosition.scan_id == scan.id)
+        .where(ConsensusPosition.scan_id == scan.id, ConsensusPosition.top_n == CANONICAL_TOP_N)
         .options(
             selectinload(ConsensusPosition.market),
             selectinload(ConsensusPosition.traders).selectinload(ConsensusPositionTrader.trader),
         )
-        .order_by(ConsensusPosition.consensus_score.desc())
     )
     positions = positions_result.scalars().all()
 
+    ranks_result = await session.execute(
+        select(TraderLeaderboardRank.trader_id, TraderLeaderboardRank.timeframe, TraderLeaderboardRank.rank).where(
+            TraderLeaderboardRank.scan_id == scan.id
+        )
+    )
+    ranks_by_trader: dict[int, dict[str, int]] = defaultdict(dict)
+    for trader_id, timeframe, rank in ranks_result.all():
+        ranks_by_trader[trader_id][timeframe.value] = rank
+
     now = datetime.now(UTC)
     variants: dict[str, list[ConsensusRowOut]] = {}
+
     for cp in positions:
         market = cp.market
         # A market with no title (Gamma metadata missing/not yet fetched) has
         # nothing meaningful to show — skip it rather than render "Untitled market".
         if market is None or not market.title.strip():
             continue
-        row = ConsensusRowOut(
-            id=f"{cp.condition_id}:{cp.outcome_index}",
-            condition_id=cp.condition_id,
-            outcome_index=cp.outcome_index,
-            outcome_label=cp.outcome_label,
-            market_title=market.title,
-            market_slug=market.slug,
-            event_slug=market.event_slug,
-            category=market.category,
-            image_url=market.image_url,
-            end_date=market.end_date,
-            # Gamma's active/closed flags only refresh on a TTL (up to 24h), so a
-            # market can sit "active" in our DB well past its real end_date —
-            # cross-check against end_date directly so expiry is immediate.
-            is_active=bool(market.active) and (market.end_date is None or market.end_date > now),
-            current_price=float(cp.current_price),
-            whale_count=cp.whale_count,
-            combined_value=float(cp.combined_value),
-            consensus_score=float(cp.consensus_score),
-            holders=[
-                HolderOut(
-                    wallet=t.trader.wallet_address,
-                    username=t.trader.username,
-                    profile_image=t.trader.profile_image,
-                    verified=t.trader.verified,
-                    best_timeframe=t.best_timeframe,
-                    best_rank=t.best_rank,
-                    position_value=float(t.position_value),
-                    size=float(t.size),
-                    avg_entry_price=float(t.avg_entry_price),
-                    current_price=float(t.current_price),
-                    cash_pnl=float(t.cash_pnl),
-                    percent_pnl=float(t.percent_pnl),
-                )
-                for t in cp.traders
-            ],
-        )
-        key = variant_key(Variant(cp.variant.value), cp.top_n)
-        variants.setdefault(key, []).append(row)
+
+        variant = Variant(cp.variant.value)
+        is_active = bool(market.active) and (market.end_date is None or market.end_date > now)
+
+        for top_n in TOP_N_OPTIONS:
+            if top_n == CANONICAL_TOP_N:
+                filtered = list(cp.traders)
+            else:
+                filtered = [
+                    t for t in cp.traders if _qualifies_for_cut(ranks_by_trader.get(t.trader_id, {}), variant, top_n)
+                ]
+            if not filtered:
+                continue
+
+            combined_value = sum(float(t.position_value) for t in filtered)
+            whale_score = sum(float(t.trader_weight or 0) for t in filtered)
+            consensus_score = score_from_weight_and_value(whale_score, combined_value, value_normalizer, max_value_boost)
+
+            row = ConsensusRowOut(
+                id=f"{cp.condition_id}:{cp.outcome_index}",
+                condition_id=cp.condition_id,
+                outcome_index=cp.outcome_index,
+                outcome_label=cp.outcome_label,
+                market_title=market.title,
+                market_slug=market.slug,
+                event_slug=market.event_slug,
+                category=market.category,
+                image_url=market.image_url,
+                end_date=market.end_date,
+                is_active=is_active,
+                current_price=float(cp.current_price),
+                whale_count=len(filtered),
+                combined_value=combined_value,
+                consensus_score=consensus_score,
+                holders=[
+                    HolderOut(
+                        wallet=t.trader.wallet_address,
+                        username=t.trader.username,
+                        profile_image=t.trader.profile_image,
+                        verified=t.trader.verified,
+                        best_timeframe=t.best_timeframe,
+                        best_rank=t.best_rank,
+                        position_value=float(t.position_value),
+                        size=float(t.size),
+                        avg_entry_price=float(t.avg_entry_price),
+                        current_price=float(t.current_price),
+                        cash_pnl=float(t.cash_pnl),
+                        percent_pnl=float(t.percent_pnl),
+                    )
+                    for t in filtered
+                ],
+            )
+            key = variant_key(variant, top_n)
+            variants.setdefault(key, []).append(row)
+
+    for rows in variants.values():
+        rows.sort(key=lambda r: r.consensus_score, reverse=True)
 
     return ConsensusSnapshot(
         scan_id=scan.id,

@@ -25,6 +25,12 @@ MAX_LEADERBOARD_RANK = 100
 
 TOP_N_OPTIONS: tuple[int, ...] = (5, 10, 25, 50, 100)
 DEFAULT_TOP_N = 25
+# Only this, widest cut is ever computed/persisted per variant — smaller
+# top-N cuts are derived from it at snapshot-load time (see repository.py),
+# since a trader qualifying for a smaller cut always also qualifies for this
+# one. Persisting all 5 cuts independently multiplied scan write volume 5x
+# for no benefit; the DB blew past a gigabyte in under a day of scans.
+CANONICAL_TOP_N = max(TOP_N_OPTIONS)
 
 # --- Track record (historical hit rate on resolved Polymarket markets) -----
 #
@@ -148,6 +154,10 @@ def trader_weight(trader: Trader, track_records: dict[str, TrackRecord]) -> floa
 class TraderHolding:
     trader: Trader
     position: Position
+    # trader_weight at construction time — persisted per-holder so the
+    # smaller top-N cuts can be re-scored from stored data without needing
+    # to re-fetch track records at read time.
+    weight: float
 
 
 @dataclass(frozen=True)
@@ -192,16 +202,23 @@ def merge_leaderboards(entries_by_timeframe: dict[Timeframe, list[LeaderboardEnt
     return traders
 
 
+def score_from_weight_and_value(whale_score: float, combined_value: float, value_normalizer: float, max_value_boost: float) -> float:
+    """The one place consensus_score is computed from its two inputs — shared
+    by scan-time scoring (_score_group, below) and repository.py's read-time
+    re-scoring of smaller top-N cuts derived from the persisted top_n=100
+    data, so the two can never silently drift apart."""
+    value_boost = min(log10(combined_value + 1) / value_normalizer, max_value_boost) if combined_value > 0 else 0.0
+    return whale_score * (1 + value_boost)
+
+
 def _score_group(
     holdings: list[TraderHolding],
-    track_records: dict[str, TrackRecord],
     value_normalizer: float,
     max_value_boost: float,
 ) -> float:
-    whale_score = sum(trader_weight(h.trader, track_records) for h in _unique_by_trader(holdings))
+    whale_score = sum(h.weight for h in _unique_by_trader(holdings))
     combined_value = sum(h.position.current_value for h in holdings)
-    value_boost = min(log10(combined_value + 1) / value_normalizer, max_value_boost)
-    return whale_score * (1 + value_boost)
+    return score_from_weight_and_value(whale_score, combined_value, value_normalizer, max_value_boost)
 
 
 def _unique_by_trader(holdings: list[TraderHolding]) -> list[TraderHolding]:
@@ -231,11 +248,13 @@ def build_consensus_groups(
     groups: dict[tuple[str, int], list[TraderHolding]] = defaultdict(list)
     labels: dict[tuple[str, int], tuple[str, float]] = {}
 
+    weight_by_wallet = {w: trader_weight(traders[w], track_records) for w in pool_wallets}
+
     for wallet in pool_wallets:
         trader = traders[wallet]
         for position in positions_by_wallet.get(wallet, []):
             key = (position.condition_id, position.outcome_index)
-            groups[key].append(TraderHolding(trader=trader, position=position))
+            groups[key].append(TraderHolding(trader=trader, position=position, weight=weight_by_wallet[wallet]))
             labels[key] = (position.outcome, position.cur_price)
 
     result: list[ConsensusGroup] = []
@@ -251,7 +270,7 @@ def build_consensus_groups(
                 holdings=tuple(holdings),
                 whale_count=len(unique_holdings),
                 combined_value=sum(h.position.current_value for h in holdings),
-                consensus_score=_score_group(holdings, track_records, value_normalizer, max_value_boost),
+                consensus_score=_score_group(holdings, value_normalizer, max_value_boost),
             )
         )
 

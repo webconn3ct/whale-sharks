@@ -12,7 +12,11 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
 
     scan_interval_minutes: int = 15
-    scan_retention_days: int = 14
+    # Nothing currently queries historical (non-latest) scans for anything
+    # user-facing — only the most recent completed scan is ever read. Kept
+    # short on purpose: each scan's consensus data is real row volume, and a
+    # long window here is pure storage cost with no feature behind it.
+    scan_retention_days: int = 2
 
     # Consensus scoring — see app/core/consensus_engine.py for the formula.
     value_normalizer: float = 6.0
