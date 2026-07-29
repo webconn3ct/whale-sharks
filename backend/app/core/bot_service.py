@@ -75,7 +75,9 @@ async def _run_bot_cycle(snapshot: ConsensusSnapshot, settings: Settings) -> Non
 
         closed_ids, cash_after_exits = await _process_exits(session, open_positions, rows_by_key, state)
         still_open = [p for p in open_positions if p.id not in closed_ids]
-        if is_fresh:
+        if state.entries_paused:
+            logger.info("entries paused by admin — skipping new trades this cycle")
+        elif is_fresh:
             await _process_entry(session, rows, still_open, cash_after_exits, state, settings)
         else:
             logger.warning("skipping entries this cycle — snapshot is %s old (> %s)", snapshot_age, ENTRY_MAX_STALENESS)

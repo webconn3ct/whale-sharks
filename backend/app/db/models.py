@@ -272,6 +272,11 @@ class BotState(Base):
     last_recalibrated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
+    # Admin kill switch — new entries are skipped while true. Existing open
+    # positions still exit normally (protecting capital shouldn't wait on
+    # this); only new trades stop.
+    entries_paused: Mapped[bool] = mapped_column(Boolean, default=False)
+
 
 class BotPosition(Base):
     """One simulated (paper) trade — open or settled. Market title/outcome

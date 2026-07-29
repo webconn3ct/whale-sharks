@@ -137,6 +137,18 @@ export function triggerRescan(): Promise<{ ok: boolean; detail: string }> {
   return postJson("/api/admin/rescan", {});
 }
 
+export function fetchBotPauseState(): Promise<{ entries_paused: boolean }> {
+  return getJson<{ entries_paused: boolean }>("/api/admin/bot/pause-state");
+}
+
+export function pauseBotEntries(): Promise<{ entries_paused: boolean }> {
+  return postJson("/api/admin/bot/pause", {});
+}
+
+export function resumeBotEntries(): Promise<{ entries_paused: boolean }> {
+  return postJson("/api/admin/bot/resume", {});
+}
+
 export function fetchScoringWeights(): Promise<ScoringWeights> {
   return getJson<ScoringWeights>("/api/admin/config");
 }

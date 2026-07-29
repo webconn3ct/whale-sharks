@@ -81,6 +81,36 @@ async def trigger_rescan(request: Request, background_tasks: BackgroundTasks, se
     return {"ok": True, "detail": "Scan started in the background — check /api/admin/scans shortly"}
 
 
+# ---- KrillBot kill switch -----------------------------------------------------
+
+
+class BotPauseStateOut(BaseModel):
+    entries_paused: bool
+
+
+@router.get("/bot/pause-state", response_model=BotPauseStateOut)
+async def get_bot_pause_state():
+    async with get_session() as session:
+        state = await repository.get_or_create_bot_state(session)
+    return BotPauseStateOut(entries_paused=state.entries_paused)
+
+
+@router.post("/bot/pause", response_model=BotPauseStateOut)
+async def pause_bot_entries():
+    async with get_session() as session:
+        await repository.update_bot_state(session, entries_paused=True)
+        await session.commit()
+    return BotPauseStateOut(entries_paused=True)
+
+
+@router.post("/bot/resume", response_model=BotPauseStateOut)
+async def resume_bot_entries():
+    async with get_session() as session:
+        await repository.update_bot_state(session, entries_paused=False)
+        await session.commit()
+    return BotPauseStateOut(entries_paused=False)
+
+
 # ---- login tracking ---------------------------------------------------------
 
 

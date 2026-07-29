@@ -11,12 +11,15 @@ import {
   excludeTrader,
   fetchAccessCodes,
   fetchAdminScans,
+  fetchBotPauseState,
   fetchExcludedMarkets,
   fetchExcludedTraders,
   fetchLoginStats,
   fetchScoringWeights,
   fetchSupportRequests,
   fetchWhaleAlerts,
+  pauseBotEntries,
+  resumeBotEntries,
   revokeAccessCode,
   triggerRescan,
   unexcludeMarket,
@@ -49,15 +52,50 @@ function OperationalControls() {
     onSuccess: () => setTimeout(() => qc.invalidateQueries({ queryKey: ["admin", "scans"] }), 3000),
   });
 
+  const pauseStateQuery = useQuery({ queryKey: ["admin", "bot-pause-state"], queryFn: fetchBotPauseState });
+  const paused = pauseStateQuery.data?.entries_paused ?? false;
+  const pauseMutation = useMutation({
+    mutationFn: pauseBotEntries,
+    onSuccess: (res) => qc.setQueryData(["admin", "bot-pause-state"], res),
+  });
+  const resumeMutation = useMutation({
+    mutationFn: resumeBotEntries,
+    onSuccess: (res) => qc.setQueryData(["admin", "bot-pause-state"], res),
+  });
+
   return (
     <Section title="Operational controls">
-      <button
-        onClick={() => rescanMutation.mutate()}
-        disabled={rescanMutation.isPending}
-        className={buttonClass}
-      >
-        {rescanMutation.isPending ? "Starting…" : "Trigger rescan now"}
-      </button>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <button
+          onClick={() => rescanMutation.mutate()}
+          disabled={rescanMutation.isPending}
+          className={buttonClass}
+        >
+          {rescanMutation.isPending ? "Starting…" : "Trigger rescan now"}
+        </button>
+        {paused ? (
+          <button
+            onClick={() => resumeMutation.mutate()}
+            disabled={resumeMutation.isPending}
+            className="rounded-md border border-[var(--good)] px-4 py-2 text-sm font-medium text-[var(--good)] transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {resumeMutation.isPending ? "Resuming…" : "Resume KrillBot trades"}
+          </button>
+        ) : (
+          <button
+            onClick={() => pauseMutation.mutate()}
+            disabled={pauseMutation.isPending}
+            className="rounded-md border border-[var(--critical)] px-4 py-2 text-sm font-medium text-[var(--critical)] transition-opacity hover:opacity-90 disabled:opacity-50"
+          >
+            {pauseMutation.isPending ? "Pausing…" : "Pause KrillBot new trades"}
+          </button>
+        )}
+        {paused && (
+          <span className="text-xs text-[var(--critical)]">
+            New trades paused — existing open positions still exit normally.
+          </span>
+        )}
+      </div>
       {rescanMutation.isSuccess && (
         <p className="mt-2 text-sm text-[var(--good)]">Scan started — refreshes below in ~30-60s.</p>
       )}
