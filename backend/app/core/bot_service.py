@@ -43,6 +43,11 @@ ENTRY_MAX_STALENESS = timedelta(minutes=5)
 # resolved even if Gamma's `active` flag hasn't caught up yet — long enough
 # that a delayed/extended real event doesn't get closed out prematurely.
 RESOLUTION_GRACE_PERIOD = timedelta(hours=4)
+# A position isn't eligible for stop-loss until it's been held this long —
+# gives the thesis real time to play out instead of cutting a position on a
+# brief dip right after entry. Take-profit and thesis-gone exits (signal
+# lost, market resolved) are unaffected — this only slows down cutting losses.
+MIN_HOLD_BEFORE_STOP_LOSS = timedelta(hours=1)
 
 
 async def run_bot_cycle(snapshot: ConsensusSnapshot, settings: Settings) -> None:
@@ -129,16 +134,20 @@ async def _process_exits(
             current_value = shares * exit_price
             unrealized_pct = (current_value - stake) / stake if stake else 0.0
 
+            held_long_enough = datetime.now(UTC) - position.entry_at >= MIN_HOLD_BEFORE_STOP_LOSS
+
             if unrealized_pct >= float(state.take_profit_pct):
                 realized_pnl = current_value - stake
                 reason = BotExitReason.TAKE_PROFIT
-            elif unrealized_pct <= -float(state.stop_loss_pct) and row.whale_count < entry_whale_count * float(
-                state.signal_decay_fraction
+            elif (
+                held_long_enough
+                and unrealized_pct <= -float(state.stop_loss_pct)
+                and row.whale_count < entry_whale_count * float(state.signal_decay_fraction)
             ):
                 realized_pnl = current_value - stake
                 reason = BotExitReason.STOP_LOSS
             else:
-                continue  # hold
+                continue  # hold — including a stop-loss-eligible position still inside its grace window
 
         await repository.close_bot_position(session, position.id, exit_price, reason, realized_pnl)
         cash_delta += stake + realized_pnl

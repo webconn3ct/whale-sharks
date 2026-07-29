@@ -45,6 +45,7 @@ function PositionRow({ position }: { position: BotPositionOut }) {
       <td className="px-3 py-2.5 text-right tabular-nums">{formatCurrency(position.stake)}</td>
       <td className="px-3 py-2.5 text-right tabular-nums text-[var(--text-secondary)]">
         {formatProbability(position.entry_price)}
+        {!isOpen && `/${formatProbability(position.exit_price ?? position.entry_price)}`}
       </td>
       <td className="px-3 py-2.5 text-right" style={{ color: isPositive ? "var(--good)" : "var(--critical)" }}>
         <div className="tabular-nums font-medium">
@@ -175,7 +176,7 @@ export function BotSection() {
                   <tr className="border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] text-left text-xs uppercase tracking-wide text-[var(--text-muted)]">
                     <th className="px-3 py-2.5">Market</th>
                     <th className="px-3 py-2.5 text-right">Stake</th>
-                    <th className="px-3 py-2.5 text-right">Entry</th>
+                    <th className="px-3 py-2.5 text-right">Entry/Exit</th>
                     <th className="px-3 py-2.5 text-right">P/L</th>
                     <th className="px-3 py-2.5 text-right">Status</th>
                   </tr>
