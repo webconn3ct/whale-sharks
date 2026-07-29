@@ -42,22 +42,20 @@ class LeaderboardEntry(BaseModel):
 
 
 class Position(BaseModel):
+    """Only fields actually consumed by consensus_engine/repository are kept —
+    market title/slug/icon/event_slug/end_date come from a separate Gamma
+    metadata fetch instead, and duplicating them here across every trader's
+    position in the same market wastes real memory at scan scale."""
+
     proxy_wallet: str = Field(alias="proxyWallet")
-    asset: str
     condition_id: str = Field(alias="conditionId")
     size: float = 0.0
     avg_price: float = Field(default=0.0, alias="avgPrice")
-    initial_value: float = Field(default=0.0, alias="initialValue")
     current_value: float = Field(default=0.0, alias="currentValue")
     cash_pnl: float = Field(default=0.0, alias="cashPnl")
     percent_pnl: float = Field(default=0.0, alias="percentPnl")
     cur_price: float = Field(default=0.0, alias="curPrice")
-    title: str = ""
-    slug: str = ""
-    icon: str | None = None
-    event_slug: str = Field(default="", alias="eventSlug")
     outcome: str = ""
-    end_date: str | None = Field(default=None, alias="endDate")
     outcome_index: int = Field(default=0, alias="outcomeIndex")
 
     model_config = {"populate_by_name": True}
