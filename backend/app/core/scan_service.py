@@ -38,6 +38,7 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
     if not traders:
         logger.error("no traders found on any leaderboard — aborting scan")
         return
+    logger.info("checkpoint: leaderboards fetched, %d unique traders", len(traders))
 
     async with get_session() as session:
         excluded_markets = await repository.get_excluded_market_ids(session)
@@ -55,6 +56,12 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
             "position fetch success rate %.0f%% below threshold — aborting scan", success_rate * 100
         )
         return
+    logger.info(
+        "checkpoint: positions fetched for %d/%d traders, %d total positions",
+        len(positions_by_wallet),
+        len(traders),
+        sum(len(p) for p in positions_by_wallet.values()),
+    )
 
     if excluded_markets:
         positions_by_wallet = {
@@ -64,8 +71,10 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
 
     condition_ids = sorted({p.condition_id for positions in positions_by_wallet.values() for p in positions})
     market_metadata = await _enrich_market_metadata(client, settings, condition_ids)
+    logger.info("checkpoint: market metadata enriched, %d markets refreshed", len(market_metadata))
 
     new_track_records, track_records = await _load_track_records(client, settings, list(traders.keys()))
+    logger.info("checkpoint: track records loaded, %d newly computed", len(new_track_records))
 
     active_positions = sum(len(p) for p in positions_by_wallet.values())
     total_value = sum(p.current_value for positions in positions_by_wallet.values() for p in positions)
@@ -97,6 +106,7 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
                     combined_top25_count = len(groups)
                 await repository.insert_consensus_groups(session, scan_id, variant, top_n, groups, trader_ids)
                 del groups
+                logger.info("checkpoint: persisted bucket variant=%s top_n=%d", variant, top_n)
 
         await repository.complete_scan(
             session, scan_id, traders_count=len(traders), positions_count=active_positions, total_value=total_value
