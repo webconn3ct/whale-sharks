@@ -3,9 +3,9 @@
 :root {
   color-scheme: dark;
 
-  --bg-page: #0d0d0d;
-  --bg-surface: #1a1a19;
-  --bg-surface-raised: #232322;
+  --bg-page: #050e1c;
+  --bg-surface: #0e1c30;
+  --bg-surface-raised: #16283f;
 
   --text-primary: #ffffff;
   --text-secondary: #c3c2b7;
@@ -71,4 +71,61 @@ body {
 
 .gate-logo-mark {
   animation: gate-pulse 6s ease-in-out infinite;
+}
+
+/* Brand wordmark — approximates the logo's bold, angular display type.
+   Font metadata isn't extractable from the source artwork (it's a raster
+   image, not a font file), so this is a styled stand-in, not an exact match. */
+.brand-wordmark {
+  font-family: "Anton", "Arial Narrow", sans-serif;
+  font-style: normal;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transform: skewX(-4deg);
+  display: inline-block;
+}
+
+.brand-tagline {
+  font-family: "Anton", "Arial Narrow", sans-serif;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+/* Swimming whale-shark + fish silhouettes — decorative background layer for
+   the login page only. Pure shapes, no detail: they're meant to read as
+   shadows deep in the water, not as a second logo. */
+.ocean-scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ocean-critter {
+  position: absolute;
+  fill: #1c3a63;
+  opacity: 0.16;
+  animation-name: swim-across;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes swim-across {
+  from {
+    transform: translateX(-20vw);
+  }
+  to {
+    transform: translateX(120vw);
+  }
+}
+
+@keyframes swim-across-reverse {
+  from {
+    transform: translateX(120vw) scaleX(-1);
+  }
+  to {
+    transform: translateX(-20vw) scaleX(-1);
+  }
 }

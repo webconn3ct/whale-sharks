@@ -119,7 +119,7 @@ function MatchupCard({
 }
 
 function TopPickCard({ pick, index, onSelect }: { pick: TopPickOut; index: number; onSelect: SelectFn }) {
-  const eyebrow = `KrillBot pick #${index + 1}`;
+  const eyebrow = `Market #${index + 1}`;
   if (pick.kind === "matchup" && pick.matchup) {
     return <MatchupCard eyebrow={eyebrow} matchup={pick.matchup} onSelect={onSelect} />;
   }

@@ -7,7 +7,8 @@ from app.api.deps import require_visitor
 from app.api.schemas import variant_key
 from app.config import Settings, get_settings
 from app.core import cache as cache_module
-from app.core.consensus_engine import Variant
+from app.core.consensus_engine import Variant, whale_rating
+from app.core.recommendation import MIN_OPPOSING_WHALES
 from app.db import repository
 from app.db.session import get_session
 
@@ -45,13 +46,16 @@ whales — that's the joke, don't over-explain it). Have a warm, a little playfu
 and genuinely useful — you're a guide with character, not a mascot doing a bit in every message.
 
 What you should help visitors with:
-- Explaining what the dashboard shows: consensus score, whale count, combined position value, probability.
+- Explaining what the dashboard shows: whale rating (a 0-1000 scale — see below), whale count, combined
+  position value, probability.
 - Explaining the filters: leaderboard timeframe (Daily/Weekly/Monthly/All-Time), the top-N cut of each \
   leaderboard (top 5/10/25/50/100 traders), market category, minimum whale count, minimum position value, \
   search, and the active/finished status toggle.
-- Explaining that consensus score weights whale count and leaderboard quality/rank first, with combined \
+- Explaining that the whale rating weights whale count and leaderboard quality/rank first, with combined \
   dollar value as a secondary, capped boost — so one huge position from a single trader can never outrank \
-  a market where several independent top traders agree.
+  a market where several independent top traders agree. It's deliberately hard to max out: the scale is \
+  calibrated against real market data so a routine pick lands in the middle of the range and only a truly \
+  exceptional case of whale agreement gets close to 1000 — a "perfect" rating basically doesn't happen.
 - Explaining that each trader's weight also factors in their real historical performance on Polymarket: \
   their win rate across their last resolved (settled) positions, and — weighted more heavily — their \
   win rate over just their most recent handful of resolved positions (their "current run" / hot-or-cold \
@@ -115,38 +119,44 @@ class ChatResponse(BaseModel):
 
 
 async def _top_picks_context() -> str:
-    """The same "clears KrillBot's own entry bar" picks shown in the whale
-    spotlight, given as real facts so the assistant has something concrete
-    to reference instead of the RECOMMENDATION RULE leaving it nothing to say."""
+    """The same "Markets" cards shown in the whale spotlight — the highest-
+    volume genuine matchups right now — given as real facts so the assistant
+    has something concrete to reference instead of the RECOMMENDATION RULE
+    leaving it nothing to say."""
     snapshot = cache_module.cache.snapshot
     if snapshot is None:
         return "CURRENT TOP PICKS: unavailable right now."
 
-    try:
-        async with get_session() as session:
-            state = await repository.get_or_create_bot_state(session)
-        min_whales = int(state.entry_min_whales)
-        score_threshold = float(state.entry_score_threshold)
-    except Exception:
-        logger.exception("failed to load bot thresholds for top-picks context")
-        return "CURRENT TOP PICKS: unavailable right now."
-
     rows = [r for r in snapshot.variants.get(variant_key(Variant.COMBINED, TOP_PICKS_TOP_N), []) if r.is_active]
-    qualifying = [r for r in rows if r.whale_count >= min_whales and r.consensus_score >= score_threshold]
+    by_condition: dict = {}
+    for r in rows:
+        by_condition.setdefault(r.condition_id, []).append(r)
 
-    picks, seen_conditions = [], set()
-    for row in qualifying:
-        if len(picks) >= 3 or row.condition_id in seen_conditions:
+    candidates, seen_conditions = [], set()
+    for row in rows:
+        if row.condition_id in seen_conditions:
+            continue
+        opposing = max(
+            (s for s in by_condition[row.condition_id] if s.id != row.id and s.whale_count >= MIN_OPPOSING_WHALES),
+            key=lambda s: s.consensus_score,
+            default=None,
+        )
+        if opposing is None:
             continue
         seen_conditions.add(row.condition_id)
-        picks.append(
-            f"  - {row.market_title} / {row.outcome_label}: {row.whale_count} whales, "
-            f"consensus score {row.consensus_score:.0f}, {row.current_price:.2f} probability."
-        )
+        leader, other = (row, opposing) if row.consensus_score >= opposing.consensus_score else (opposing, row)
+        candidates.append((leader, other, leader.combined_value + other.combined_value))
 
+    candidates.sort(key=lambda c: c[2], reverse=True)
+
+    picks = [
+        f"  - {leader.market_title}: {leader.outcome_label} ({leader.whale_count} whales) vs "
+        f"{other.outcome_label} ({other.whale_count} whales), ${volume:,.0f} combined."
+        for leader, other, volume in candidates[:3]
+    ]
     if not picks:
-        return "CURRENT TOP PICKS: none clear the bar right now."
-    return "CURRENT TOP PICKS (the same ones shown in the whale spotlight):\n" + "\n".join(picks)
+        return "CURRENT TOP PICKS: no active matchups right now."
+    return "CURRENT TOP PICKS (the same 'Markets' cards shown in the whale spotlight):\n" + "\n".join(picks)
 
 
 async def _bot_context_block() -> str:
@@ -171,7 +181,8 @@ async def _bot_context_block() -> str:
     for p in open_positions:
         lines.append(
             f"  - {p.market_title} / {p.outcome_label}: ${float(p.stake):.0f} stake at entry price "
-            f"{float(p.entry_price):.2f}, entered on {p.entry_whale_count} whales, score {float(p.entry_consensus_score):.0f}."
+            f"{float(p.entry_price):.2f}, entered on {p.entry_whale_count} whales, "
+            f"whale rating {whale_rating(float(p.entry_consensus_score))}/1000."
         )
     lines.append(f"- Recent closed trades (last {len(recent_closed)}):")
     for p in recent_closed:
@@ -181,8 +192,8 @@ async def _bot_context_block() -> str:
             f"{'+' if pnl >= 0 else ''}{pnl:.2f} pnl, closed as {p.exit_reason.value if p.exit_reason else 'unknown'}."
         )
     lines.append(
-        f"- Current entry bar: needs >= {int(state.entry_min_whales)} whales and consensus score >= "
-        f"{float(state.entry_score_threshold):.0f} to be considered."
+        f"- Current entry bar: needs >= {int(state.entry_min_whales)} whales and whale rating >= "
+        f"{whale_rating(float(state.entry_score_threshold))}/1000 to be considered."
     )
     return "\n".join(lines)
 

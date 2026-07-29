@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { WhaleSharkLogo } from "./WhaleSharkLogo";
+import { OceanScene } from "./OceanScene";
 import { unlock } from "../lib/api";
 
 export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
@@ -24,8 +24,13 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
 
   return (
     <div className="gate-background relative flex min-h-screen items-center justify-center overflow-hidden px-6">
-      <WhaleSharkLogo size={1100} className="gate-logo-mark -left-40 top-1/2 -translate-y-1/2" />
-      <WhaleSharkLogo size={500} className="gate-logo-mark right-0 top-0 rotate-12" />
+      <OceanScene />
+      <img
+        src="/brand/shark-mark-800.png"
+        alt=""
+        className="gate-logo-mark -left-64 top-1/2 w-[1100px] -translate-y-1/2"
+      />
+      <img src="/brand/shark-mark-800.png" alt="" className="gate-logo-mark right-0 top-0 w-[500px] rotate-12" />
 
       <a
         href="/admin"
@@ -36,10 +41,10 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
 
       <div className="relative z-10 w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-4 text-center">
-          <WhaleSharkLogo size={72} />
+          <img src="/brand/shark-mark-300.png" alt="Whale Sharkks" className="h-28 w-28 object-contain" />
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Whale Sharks</h1>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">
+            <h1 className="brand-wordmark text-3xl text-[var(--text-primary)]">Whale Sharkks</h1>
+            <p className="brand-tagline mt-1 text-xs text-[var(--text-muted)]">
               Where deep pockets swim in the same current.
             </p>
           </div>

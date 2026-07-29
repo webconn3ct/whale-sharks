@@ -50,3 +50,22 @@ export const TIMEFRAME_LABEL: Record<string, string> = {
   MONTH: "Monthly",
   ALL: "All-Time",
 };
+
+// The raw consensus_score is an unbounded internal ranking key (real
+// production values range from ~1 to 5000+), not something a visitor should
+// have to interpret directly. This maps it onto a practical 0-1000 rating
+// via a saturating curve — rating = 1000 * score / (score + K) — calibrated
+// against the REAL score distribution of live markets (min_whales >= 2,
+// queried directly from production): median score ~346, p90 ~868, p99 ~2049,
+// max observed ~5034. With K=350 that lands the median at ~500 (a genuinely
+// middling pick reads as middling), p90 at ~713, p99 at ~854, and even the
+// most extreme real-world case only reaches ~935 — the curve approaches
+// 1000 asymptotically and never reaches it, so a "perfect" rating is not
+// something the scale can produce, by construction.
+const WHALE_RATING_K = 350;
+
+export function whaleRating(consensusScore: number): number {
+  if (consensusScore <= 0) return 0;
+  const rating = (1000 * consensusScore) / (consensusScore + WHALE_RATING_K);
+  return Math.min(999, Math.round(rating));
+}

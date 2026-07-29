@@ -202,6 +202,24 @@ def merge_leaderboards(entries_by_timeframe: dict[Timeframe, list[LeaderboardEnt
     return traders
 
 
+# consensus_score is an unbounded internal ranking key (real production values
+# range from ~1 to 5000+) — never shown to a visitor directly. whale_rating()
+# is the practical 0-1000 display scale, calibrated against the real score
+# distribution of live markets (min_whales >= 2): median ~346, p90 ~868, p99
+# ~2049, max observed ~5034. K=350 lands the median at ~500, p90 at ~713, p99
+# at ~854 — the curve approaches 1000 asymptotically and never reaches it, so
+# a "perfect" rating can't happen by construction. Mirrors
+# frontend/src/lib/format.ts's whaleRating() — keep the two in sync.
+WHALE_RATING_K = 350.0
+
+
+def whale_rating(consensus_score: float) -> int:
+    if consensus_score <= 0:
+        return 0
+    rating = 1000 * consensus_score / (consensus_score + WHALE_RATING_K)
+    return min(999, round(rating))
+
+
 def score_from_weight_and_value(whale_score: float, combined_value: float, value_normalizer: float, max_value_boost: float) -> float:
     """The one place consensus_score is computed from its two inputs — shared
     by scan-time scoring (_score_group, below) and repository.py's read-time

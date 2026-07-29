@@ -6,7 +6,7 @@ import { KrillIcon } from "./KrillIcon";
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "Hey, I'm KrillBot — ask me about the dashboard, my trades, or what consensus score means. What do you need?" },
+    { role: "assistant", content: "Hey, I'm KrillBot — ask me about the dashboard, my trades, or what whale rating means. What do you need?" },
   ]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);

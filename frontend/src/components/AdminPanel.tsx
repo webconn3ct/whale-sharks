@@ -138,29 +138,29 @@ function WhaleAlertsList() {
   const alertsQuery = useQuery({ queryKey: ["admin", "whale-alerts"], queryFn: fetchWhaleAlerts, refetchInterval: 30_000 });
   const ackMutation = useMutation({
     mutationFn: acknowledgeWhaleAlert,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "whale-alerts"] }),
+    onSuccess: (_res, id) =>
+      qc.setQueryData(["admin", "whale-alerts"], (prev: typeof alertsQuery.data) => (prev ?? []).filter((a) => a.id !== id)),
   });
   const ackAllMutation = useMutation({
     mutationFn: acknowledgeAllWhaleAlerts,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "whale-alerts"] }),
+    onSuccess: () => qc.setQueryData(["admin", "whale-alerts"], []),
   });
 
-  const alerts = alertsQuery.data ?? [];
-  const unread = alerts.filter((a) => !a.acknowledged).length;
+  const alerts = (alertsQuery.data ?? []).filter((a) => !a.acknowledged);
 
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-medium text-[var(--text-secondary)]">
-          Whale trades ($500k+) {unread > 0 && <span className="text-[var(--accent)]">· {unread} unread</span>}
+          Whale trades ($500k+) {alerts.length > 0 && <span className="text-[var(--accent)]">· {alerts.length} unread</span>}
         </h3>
-        {unread > 0 && (
+        {alerts.length > 0 && (
           <button
             onClick={() => ackAllMutation.mutate()}
             disabled={ackAllMutation.isPending}
             className="text-xs text-[var(--accent)] hover:underline"
           >
-            Mark all read
+            Dismiss all
           </button>
         )}
       </div>
@@ -168,9 +168,7 @@ function WhaleAlertsList() {
         {alerts.map((a) => (
           <li
             key={a.id}
-            className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm ${
-              a.acknowledged ? "border-[var(--border-hairline)]" : "border-[var(--accent)] bg-[var(--bg-page)]"
-            }`}
+            className="flex items-center justify-between gap-3 rounded-lg border border-[var(--accent)] bg-[var(--bg-page)] px-3 py-2.5 text-sm"
           >
             <div className="min-w-0">
               <div className="truncate font-medium text-[var(--text-primary)]" title={a.market_title}>
@@ -181,14 +179,12 @@ function WhaleAlertsList() {
                 {formatCompactCurrency(a.position_value)} · {formatRelativeTime(a.detected_at)}
               </div>
             </div>
-            {!a.acknowledged && (
-              <button
-                onClick={() => ackMutation.mutate(a.id)}
-                className="shrink-0 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-              >
-                Dismiss
-              </button>
-            )}
+            <button
+              onClick={() => ackMutation.mutate(a.id)}
+              className="shrink-0 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            >
+              Dismiss
+            </button>
           </li>
         ))}
         {alerts.length === 0 && <li className="text-sm text-[var(--text-muted)]">No large trades flagged yet.</li>}
@@ -206,24 +202,24 @@ function SupportRequestsList() {
   });
   const ackMutation = useMutation({
     mutationFn: acknowledgeSupportRequest,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "support-requests"] }),
+    onSuccess: (_res, id) =>
+      qc.setQueryData(["admin", "support-requests"], (prev: typeof requestsQuery.data) =>
+        (prev ?? []).filter((r) => r.id !== id)
+      ),
   });
 
-  const requests = requestsQuery.data ?? [];
-  const unread = requests.filter((r) => !r.acknowledged).length;
+  const requests = (requestsQuery.data ?? []).filter((r) => !r.acknowledged);
 
   return (
     <div>
       <h3 className="mb-2 text-sm font-medium text-[var(--text-secondary)]">
-        KrillBot escalations {unread > 0 && <span className="text-[var(--accent)]">· {unread} unread</span>}
+        KrillBot escalations {requests.length > 0 && <span className="text-[var(--accent)]">· {requests.length} unread</span>}
       </h3>
       <ul className="space-y-2">
         {requests.map((r) => (
           <li
             key={r.id}
-            className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm ${
-              r.acknowledged ? "border-[var(--border-hairline)]" : "border-[var(--accent)] bg-[var(--bg-page)]"
-            }`}
+            className="flex items-center justify-between gap-3 rounded-lg border border-[var(--accent)] bg-[var(--bg-page)] px-3 py-2.5 text-sm"
           >
             <div className="min-w-0">
               <div className="truncate font-medium text-[var(--text-primary)]" title={r.summary}>
@@ -233,14 +229,12 @@ function SupportRequestsList() {
                 Contact: {r.contact} · {formatRelativeTime(r.created_at)}
               </div>
             </div>
-            {!r.acknowledged && (
-              <button
-                onClick={() => ackMutation.mutate(r.id)}
-                className="shrink-0 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-              >
-                Dismiss
-              </button>
-            )}
+            <button
+              onClick={() => ackMutation.mutate(r.id)}
+              className="shrink-0 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            >
+              Dismiss
+            </button>
           </li>
         ))}
         {requests.length === 0 && <li className="text-sm text-[var(--text-muted)]">No escalations from KrillBot yet.</li>}

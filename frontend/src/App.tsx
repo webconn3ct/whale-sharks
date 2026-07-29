@@ -6,12 +6,12 @@ import { ConsensusTable } from "./components/ConsensusTable";
 import { PageControl } from "./components/PageControl";
 import { MarketDetailDrawer } from "./components/MarketDetailDrawer";
 import { HighlightsStrip } from "./components/HighlightsStrip";
+import { MissionSection } from "./components/MissionSection";
 import { BotSection } from "./components/BotSection";
 import { AccessGate } from "./components/AccessGate";
 import { AdminLogin } from "./components/AdminLogin";
 import { AdminPanel } from "./components/AdminPanel";
 import { ChatWidget } from "./components/ChatWidget";
-import { WhaleSharkLogo } from "./components/WhaleSharkLogo";
 import { useAuthStatus, useCategories, useConsensus, useHighlights, useSummary } from "./hooks/useApi";
 import type { ConsensusFilters, ConsensusRowOut, Variant } from "./lib/types";
 import { ApiNotReadyError, logout } from "./lib/api";
@@ -64,10 +64,10 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
     <div className="mx-auto max-w-7xl px-6 py-8">
       <header className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <WhaleSharkLogo size={36} />
+          <img src="/brand/shark-mark-120.png" alt="Whale Sharkks" className="h-10 w-10 object-contain" />
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Whale Sharks</h1>
-            <p className="text-sm text-[var(--text-muted)]">Where deep pockets swim in the same current.</p>
+            <h1 className="brand-wordmark text-xl text-[var(--text-primary)]">Whale Sharkks</h1>
+            <p className="brand-tagline text-[11px] text-[var(--text-muted)]">Where deep pockets swim in the same current.</p>
           </div>
         </div>
         <button
@@ -81,6 +81,8 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
       <div className="mb-6">
         <SummaryMetrics summary={summaryQuery.data} isLoading={summaryQuery.isLoading} />
       </div>
+
+      <MissionSection />
 
       {notReady ? (
         <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-surface)] py-16 text-center text-sm text-[var(--text-secondary)]">

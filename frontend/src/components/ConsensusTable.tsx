@@ -8,7 +8,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import type { ConsensusRowOut } from "../lib/types";
-import { formatCompactCurrency, formatProbability } from "../lib/format";
+import { formatCompactCurrency, formatProbability, whaleRating } from "../lib/format";
 
 const columnHelper = createColumnHelper<ConsensusRowOut>();
 
@@ -64,8 +64,13 @@ export function ConsensusTable({
         cell: (info) => <span className="tabular-nums">{formatCompactCurrency(info.getValue())}</span>,
       }),
       columnHelper.accessor("consensus_score", {
-        header: "Consensus score",
-        cell: (info) => <span className="tabular-nums font-medium">{info.getValue().toFixed(0)}</span>,
+        header: "Whale rating",
+        cell: (info) => (
+          <span className="tabular-nums font-medium">
+            {whaleRating(info.getValue())}
+            <span className="text-[var(--text-muted)]">/1000</span>
+          </span>
+        ),
       }),
     ],
     [],

@@ -6,7 +6,7 @@ from app.api.deps import get_ready_snapshot, require_visitor
 from app.api.schemas import ConsensusRowOut, ConsensusSnapshot, LeanOut, PaginatedConsensusOut, variant_key
 from app.config import Settings, get_settings
 from app.core.consensus_engine import TOP_N_OPTIONS, Variant
-from app.core.recommendation import compute_lean_facts, get_reasoning
+from app.core.recommendation import MIN_OPPOSING_WHALES, compute_lean_facts, get_reasoning
 
 router = APIRouter(dependencies=[Depends(require_visitor)])
 
@@ -95,7 +95,7 @@ async def get_consensus_lean(
         raise HTTPException(status_code=404, detail="Consensus position not found")
 
     opposing = max(
-        (r for r in rows if r.condition_id == row.condition_id and r.id != row.id),
+        (r for r in rows if r.condition_id == row.condition_id and r.id != row.id and r.whale_count >= MIN_OPPOSING_WHALES),
         key=lambda r: r.consensus_score,
         default=None,
     )

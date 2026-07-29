@@ -12,7 +12,13 @@ from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You write ONE concise sentence of trading insight for a Polymarket whale-consensus \
+# Below this whale count, an "opposing" position is noise, not a real
+# conflict — shared by both the whale-spotlight matchup builder and the
+# per-market lean endpoint so a lean never gets padded out against a
+# near-empty position just to sound more substantial.
+MIN_OPPOSING_WHALES = 2
+
+SYSTEM_PROMPT = """You write ONE concise, complete sentence of trading insight for a Polymarket whale-consensus \
 dashboard, given a JSON object of already-computed facts.
 
 Hard rules:
@@ -24,6 +30,8 @@ a comparison that doesn't exist.
 (whale count, leaderboard rank quality, or score gap — whichever is most lopsided).
 - Describe what the whale data currently shows, never what will happen — this is NOT a prediction of the \
 market's real-world outcome, and must never be phrased as one (no "will win", "is likely to happen", etc.).
+- The sentence must be a real, complete, well-formed sentence on its own — not a sentence fragment, not a \
+list of numbers. Keep it tight enough (well under 40 words) that you never have to cut it short.
 - Output exactly one sentence, no preamble, no quotation marks."""
 
 
@@ -86,7 +94,7 @@ async def phrase_reasoning(settings: Settings, facts: dict) -> str:
     try:
         response = await client.messages.create(
             model="claude-opus-5",
-            max_tokens=150,
+            max_tokens=300,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": str(facts)}],
         )
@@ -96,10 +104,16 @@ async def phrase_reasoning(settings: Settings, facts: dict) -> str:
     finally:
         await client.close()
 
-    if response.stop_reason == "refusal":
+    if response.stop_reason in ("refusal", "max_tokens"):
+        # max_tokens here means the sentence got cut off mid-thought — never
+        # show a fragment, the deterministic template is always complete.
         return render_template(facts)
     text = next((block.text for block in response.content if block.type == "text"), "")
-    return text.strip() or render_template(facts)
+    text = text.strip()
+    if not text or text[-1] not in ".!?":
+        # Any other sign the sentence didn't land clean — same reasoning.
+        return render_template(facts)
+    return text
 
 
 # In-process cache, keyed by scan_id so it's invalidated automatically every

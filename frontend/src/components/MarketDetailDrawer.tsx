@@ -1,5 +1,5 @@
 import type { HolderOut } from "../lib/types";
-import { formatCurrency, formatPercent, formatProbability, truncateWallet, TIMEFRAME_LABEL } from "../lib/format";
+import { formatCurrency, formatPercent, formatProbability, truncateWallet, whaleRating, TIMEFRAME_LABEL } from "../lib/format";
 import { useConsensusLean } from "../hooks/useApi";
 import type { SelectedRow } from "../App";
 
@@ -84,7 +84,7 @@ export function MarketDetailDrawer({
             <span>Probability {formatProbability(row.current_price)}</span>
             <span className="text-[var(--accent)]">{row.whale_count} whales</span>
             <span>{formatCurrency(row.combined_value)} combined</span>
-            <span>Score {row.consensus_score.toFixed(0)}</span>
+            <span>Whale rating {whaleRating(row.consensus_score)}/1000</span>
           </div>
           {row.market_slug && (
             <a

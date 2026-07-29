@@ -42,8 +42,8 @@ export function FiltersBar({ filters, onChange, categories }: Props) {
     <div className="flex flex-wrap items-center gap-2">
       <input
         type="search"
-        placeholder="Search markets by keyword or phrase…"
-        className={inputClass + " w-64"}
+        placeholder="Search markets…"
+        className={inputClass + " w-44"}
         value={searchDraft}
         onChange={(e) => setSearchDraft(e.target.value)}
       />
@@ -105,19 +105,19 @@ export function FiltersBar({ filters, onChange, categories }: Props) {
         <input
           type="number"
           min={0}
-          className={inputClass + " w-20"}
+          className={inputClass + " w-14"}
           value={filters.min_whales}
           onChange={(e) => onChange({ ...filters, min_whales: Math.max(0, Number(e.target.value) || 0) })}
         />
       </label>
 
       <label className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)]">
-        Min value ($)
+        Min $
         <input
           type="number"
           min={0}
           step={1000}
-          className={inputClass + " w-28"}
+          className={inputClass + " w-20"}
           value={filters.min_value}
           onChange={(e) => onChange({ ...filters, min_value: Math.max(0, Number(e.target.value) || 0) })}
         />
