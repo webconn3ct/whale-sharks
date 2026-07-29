@@ -32,7 +32,7 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
-        value: "https://whale-sharks-api.onrender.com"
+        value: "https://api.whalesharkks.com"
     routes:
       - type: rewrite
         source: /*
