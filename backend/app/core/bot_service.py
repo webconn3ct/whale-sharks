@@ -20,7 +20,7 @@ break the real scan).
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.api.schemas import ConsensusRowOut, ConsensusSnapshot, variant_key
 from app.config import Settings
@@ -36,6 +36,9 @@ STAKE_TIERS = (10.0, 25.0, 50.0)
 MAX_CONCURRENT_POSITIONS = 10
 RECALIBRATION_INTERVAL = 15
 RECALIBRATION_LOOKBACK = 30
+# New entries require the snapshot to be this fresh — protects against
+# opening a position on a line that's since moved.
+ENTRY_MAX_STALENESS = timedelta(minutes=5)
 
 
 async def run_bot_cycle(snapshot: ConsensusSnapshot, settings: Settings) -> None:
@@ -49,13 +52,24 @@ async def _run_bot_cycle(snapshot: ConsensusSnapshot, settings: Settings) -> Non
     rows = snapshot.variants.get(variant_key(Variant.COMBINED, CANONICAL_TOP_N), [])
     rows_by_key = {(r.condition_id, r.outcome_index): r for r in rows}
 
+    # New entries only happen against a fresh snapshot — if the scan that
+    # produced this data is more than ENTRY_MAX_STALENESS old (a stuck job,
+    # a delayed retry, whatever), the price the bot would enter at may no
+    # longer reflect reality. Exits still run regardless of staleness —
+    # protecting capital on the way out shouldn't wait on a fresh scan.
+    snapshot_age = datetime.now(UTC) - snapshot.last_refresh_at
+    is_fresh = snapshot_age <= ENTRY_MAX_STALENESS
+
     async with get_session() as session:
         state = await repository.get_or_create_bot_state(session)
         open_positions = await repository.get_open_bot_positions(session)
 
         closed_ids, cash_after_exits = await _process_exits(session, open_positions, rows_by_key, state)
         still_open = [p for p in open_positions if p.id not in closed_ids]
-        await _process_entry(session, rows, still_open, cash_after_exits, state, settings)
+        if is_fresh:
+            await _process_entry(session, rows, still_open, cash_after_exits, state, settings)
+        else:
+            logger.warning("skipping entries this cycle — snapshot is %s old (> %s)", snapshot_age, ENTRY_MAX_STALENESS)
 
         if closed_ids:
             new_count = int(state.trades_since_recalibration) + len(closed_ids)
@@ -88,15 +102,22 @@ async def _process_exits(
             exit_price = float(position.entry_price)
             realized_pnl = 0.0
             reason = BotExitReason.SIGNAL_LOST
+        elif not row.is_active:
+            # Resolved markets pay out exactly $1 or $0 per share — never a
+            # fraction. `current_price` here is just whatever was last
+            # scraped (up to one scan cycle stale) and isn't guaranteed to
+            # have converged to the true settlement value yet, so snap it to
+            # the real binary payout instead of settling at a stale price.
+            exit_price = 1.0 if row.current_price >= 0.5 else 0.0
+            current_value = shares * exit_price
+            realized_pnl = current_value - stake
+            reason = BotExitReason.MARKET_RESOLVED
         else:
             exit_price = row.current_price
             current_value = shares * exit_price
             unrealized_pct = (current_value - stake) / stake if stake else 0.0
 
-            if not row.is_active:
-                realized_pnl = current_value - stake
-                reason = BotExitReason.MARKET_RESOLVED
-            elif unrealized_pct >= float(state.take_profit_pct):
+            if unrealized_pct >= float(state.take_profit_pct):
                 realized_pnl = current_value - stake
                 reason = BotExitReason.TAKE_PROFIT
             elif unrealized_pct <= -float(state.stop_loss_pct) and row.whale_count < entry_whale_count * float(

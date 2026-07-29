@@ -13,3 +13,6 @@ frontend/.env
 
 # OS
 .DS_Store
+
+# Sports-data research workspace (large datasets, not application code)
+research/
