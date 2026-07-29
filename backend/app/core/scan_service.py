@@ -67,14 +67,6 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
 
     new_track_records, track_records = await _load_track_records(client, settings, list(traders.keys()))
 
-    groups_by_bucket = {
-        (variant, top_n): build_consensus_groups(
-            traders, positions_by_wallet, variant, top_n, track_records, value_normalizer, max_value_boost
-        )
-        for variant in Variant
-        for top_n in TOP_N_OPTIONS
-    }
-
     active_positions = sum(len(p) for p in positions_by_wallet.values())
     total_value = sum(p.current_value for positions in positions_by_wallet.values() for p in positions)
 
@@ -91,8 +83,20 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
         trader_ids = await repository.upsert_traders(session, traders)
         await repository.insert_leaderboard_ranks(session, scan_id, traders, trader_ids)
         await repository.upsert_track_records(session, new_track_records, trader_ids)
-        for (variant, top_n), groups in groups_by_bucket.items():
-            await repository.insert_consensus_groups(session, scan_id, variant, top_n, groups, trader_ids)
+
+        # Build and persist one (variant, top_n) bucket at a time rather than
+        # holding all 25 full result sets in memory at once — with
+        # leaderboard_size=100 that peak was large enough to OOM a 512MB instance.
+        combined_top25_count = 0
+        for variant in Variant:
+            for top_n in TOP_N_OPTIONS:
+                groups = build_consensus_groups(
+                    traders, positions_by_wallet, variant, top_n, track_records, value_normalizer, max_value_boost
+                )
+                if variant == Variant.COMBINED and top_n == 25:
+                    combined_top25_count = len(groups)
+                await repository.insert_consensus_groups(session, scan_id, variant, top_n, groups, trader_ids)
+                del groups
 
         await repository.complete_scan(
             session, scan_id, traders_count=len(traders), positions_count=active_positions, total_value=total_value
@@ -116,7 +120,7 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
         scan_id,
         len(traders),
         active_positions,
-        len(groups_by_bucket[(Variant.COMBINED, 25)]),
+        combined_top25_count,
         len(new_track_records),
     )
 
