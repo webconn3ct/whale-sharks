@@ -36,7 +36,7 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
 
       <div className="relative z-10 w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-4 text-center">
-          <WhaleSharkLogo size={72} className="text-[var(--accent)]" />
+          <WhaleSharkLogo size={72} />
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Whale Sharks</h1>
             <p className="mt-1 text-sm text-[var(--text-muted)]">

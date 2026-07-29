@@ -40,6 +40,14 @@ export function FiltersBar({ filters, onChange, categories }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <input
+        type="search"
+        placeholder="Search markets by keyword or phrase…"
+        className={inputClass + " w-64"}
+        value={searchDraft}
+        onChange={(e) => setSearchDraft(e.target.value)}
+      />
+
       <select
         className={selectClass}
         value={filters.timeframe}
@@ -114,14 +122,6 @@ export function FiltersBar({ filters, onChange, categories }: Props) {
           onChange={(e) => onChange({ ...filters, min_value: Math.max(0, Number(e.target.value) || 0) })}
         />
       </label>
-
-      <input
-        type="search"
-        placeholder="Search markets…"
-        className={inputClass + " ml-auto w-56"}
-        value={searchDraft}
-        onChange={(e) => setSearchDraft(e.target.value)}
-      />
     </div>
   );
 }

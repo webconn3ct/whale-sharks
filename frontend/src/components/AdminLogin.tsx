@@ -26,7 +26,7 @@ export function AdminLogin({ onLoggedIn }: { onLoggedIn: () => void }) {
     <div className="gate-background flex min-h-screen items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <WhaleSharkLogo size={56} className="text-[var(--accent)]" />
+          <WhaleSharkLogo size={56} />
           <h1 className="text-xl font-semibold tracking-tight">Admin Login</h1>
         </div>
         <form

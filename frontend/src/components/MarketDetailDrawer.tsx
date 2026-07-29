@@ -1,5 +1,7 @@
-import type { ConsensusRowOut, HolderOut } from "../lib/types";
+import type { HolderOut } from "../lib/types";
 import { formatCurrency, formatPercent, formatProbability, truncateWallet, TIMEFRAME_LABEL } from "../lib/format";
+import { useConsensusLean } from "../hooks/useApi";
+import type { SelectedRow } from "../App";
 
 function HolderRow({ holder }: { holder: HolderOut }) {
   const isPositive = holder.cash_pnl >= 0;
@@ -32,8 +34,32 @@ function HolderRow({ holder }: { holder: HolderOut }) {
   );
 }
 
-export function MarketDetailDrawer({ row, onClose }: { row: ConsensusRowOut | null; onClose: () => void }) {
-  if (!row) return null;
+function LeanBanner({ selected }: { selected: SelectedRow }) {
+  const leanQuery = useConsensusLean(selected.row.id, selected.timeframe, selected.topN);
+
+  return (
+    <div className="mt-4 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-4 py-3">
+      <div className="text-xs font-medium uppercase tracking-wide text-[var(--accent)]">Data-backed lean</div>
+      {leanQuery.isLoading ? (
+        <p className="mt-1 text-sm text-[var(--text-muted)]">Computing…</p>
+      ) : (
+        <p className="mt-1 text-sm text-[var(--text-primary)]">
+          {leanQuery.data?.reasoning ?? "No recommendation available for this market."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function MarketDetailDrawer({
+  selected,
+  onClose,
+}: {
+  selected: SelectedRow | null;
+  onClose: () => void;
+}) {
+  if (!selected) return null;
+  const row = selected.row;
 
   const sortedHolders = [...row.holders].sort((a, b) => b.position_value - a.position_value);
 
@@ -70,6 +96,8 @@ export function MarketDetailDrawer({ row, onClose }: { row: ConsensusRowOut | nu
               View on Polymarket ↗
             </a>
           )}
+
+          <LeanBanner selected={selected} />
         </div>
 
         <div className="mt-6 overflow-x-auto rounded-lg border border-[var(--border-hairline)]">

@@ -337,21 +337,29 @@ async def load_latest_snapshot(session: AsyncSession) -> ConsensusSnapshot | Non
     )
     positions = positions_result.scalars().all()
 
+    now = datetime.now(UTC)
     variants: dict[str, list[ConsensusRowOut]] = {}
     for cp in positions:
         market = cp.market
+        # A market with no title (Gamma metadata missing/not yet fetched) has
+        # nothing meaningful to show — skip it rather than render "Untitled market".
+        if market is None or not market.title.strip():
+            continue
         row = ConsensusRowOut(
             id=f"{cp.condition_id}:{cp.outcome_index}",
             condition_id=cp.condition_id,
             outcome_index=cp.outcome_index,
             outcome_label=cp.outcome_label,
-            market_title=market.title if market else "",
-            market_slug=market.slug if market else "",
-            event_slug=market.event_slug if market else "",
-            category=market.category if market else None,
-            image_url=market.image_url if market else None,
-            end_date=market.end_date if market else None,
-            is_active=market.active if market else True,
+            market_title=market.title,
+            market_slug=market.slug,
+            event_slug=market.event_slug,
+            category=market.category,
+            image_url=market.image_url,
+            end_date=market.end_date,
+            # Gamma's active/closed flags only refresh on a TTL (up to 24h), so a
+            # market can sit "active" in our DB well past its real end_date —
+            # cross-check against end_date directly so expiry is immediate.
+            is_active=bool(market.active) and (market.end_date is None or market.end_date > now),
             current_price=float(cp.current_price),
             whale_count=cp.whale_count,
             combined_value=float(cp.combined_value),

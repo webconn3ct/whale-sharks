@@ -1,22 +1,27 @@
-import type { ConsensusRowOut, HighlightsOut } from "../lib/types";
+import type { ConsensusRowOut, HighlightsOut, MatchupOut, TopPickOut, Variant } from "../lib/types";
 import { formatCompactCurrency, formatProbability, TIMEFRAME_LABEL } from "../lib/format";
+
+type SelectFn = (row: ConsensusRowOut, timeframe: Variant, topN: number) => void;
 
 // Only today's pick joins the top-picks/most-volume cards here — Weekly,
 // Monthly, and All-Time are still filterable via the timeframe dropdown below.
-const TIMEFRAME_KEYS: { key: string; label: string }[] = [{ key: "day", label: TIMEFRAME_LABEL.DAY }];
+const TIMEFRAME_KEYS: { key: Variant; label: string }[] = [{ key: "day", label: TIMEFRAME_LABEL.DAY }];
+const HIGHLIGHTS_TOP_N = 25;
 
 function HighlightCard({
   eyebrow,
   row,
+  timeframe,
   onSelect,
 }: {
   eyebrow: string;
   row: ConsensusRowOut | null | undefined;
-  onSelect: (row: ConsensusRowOut) => void;
+  timeframe: Variant;
+  onSelect: SelectFn;
 }) {
   return (
     <button
-      onClick={() => row && onSelect(row)}
+      onClick={() => row && onSelect(row, timeframe, HIGHLIGHTS_TOP_N)}
       disabled={!row}
       className="flex w-56 shrink-0 flex-col items-start gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-4 py-3 text-left transition-colors hover:bg-[var(--bg-surface-raised)] disabled:cursor-default disabled:hover:bg-[var(--bg-surface)]"
     >
@@ -39,12 +44,77 @@ function HighlightCard({
   );
 }
 
+function MatchupSideButton({
+  row,
+  isLeader,
+  onSelect,
+}: {
+  row: ConsensusRowOut;
+  isLeader: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={
+        "flex-1 rounded border px-2 py-1.5 text-left transition-colors hover:bg-[var(--bg-surface-raised)] " +
+        (isLeader ? "border-[var(--accent)]" : "border-[var(--border-hairline)]")
+      }
+    >
+      <div className={"text-xs font-medium " + (isLeader ? "text-[var(--accent)]" : "text-[var(--text-secondary)]")}>
+        {row.outcome_label}
+      </div>
+      <div className="text-xs text-[var(--text-muted)]">{row.whale_count} whales</div>
+    </button>
+  );
+}
+
+function MatchupCard({
+  eyebrow,
+  matchup,
+  onSelect,
+}: {
+  eyebrow: string;
+  matchup: MatchupOut;
+  onSelect: SelectFn;
+}) {
+  return (
+    <div className="flex w-80 shrink-0 flex-col gap-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-4 py-3 text-left">
+      <span className="text-xs font-medium uppercase tracking-wide text-[var(--accent)]">{eyebrow} · Matchup</span>
+      <span className="truncate text-sm font-medium text-[var(--text-primary)]" title={matchup.leader.market_title}>
+        {matchup.leader.market_title || "Untitled market"}
+      </span>
+      <div className="flex gap-2">
+        <MatchupSideButton
+          row={matchup.leader}
+          isLeader
+          onSelect={() => onSelect(matchup.leader, "combined", HIGHLIGHTS_TOP_N)}
+        />
+        <MatchupSideButton
+          row={matchup.other}
+          isLeader={false}
+          onSelect={() => onSelect(matchup.other, "combined", HIGHLIGHTS_TOP_N)}
+        />
+      </div>
+      <p className="text-xs leading-relaxed text-[var(--text-secondary)]">{matchup.reasoning}</p>
+    </div>
+  );
+}
+
+function TopPickCard({ pick, index, onSelect }: { pick: TopPickOut; index: number; onSelect: SelectFn }) {
+  const eyebrow = `Top pick #${index + 1}`;
+  if (pick.kind === "matchup" && pick.matchup) {
+    return <MatchupCard eyebrow={eyebrow} matchup={pick.matchup} onSelect={onSelect} />;
+  }
+  return <HighlightCard eyebrow={eyebrow} row={pick.single} timeframe="combined" onSelect={onSelect} />;
+}
+
 export function HighlightsStrip({
   highlights,
   onSelect,
 }: {
   highlights: HighlightsOut | undefined;
-  onSelect: (row: ConsensusRowOut) => void;
+  onSelect: SelectFn;
 }) {
   if (!highlights) return null;
 
@@ -54,12 +124,12 @@ export function HighlightsStrip({
         Whale spotlight
       </h2>
       <div className="flex flex-wrap gap-3">
-        {highlights.top_picks.map((row, i) => (
-          <HighlightCard key={row.id} eyebrow={`Top pick #${i + 1}`} row={row} onSelect={onSelect} />
+        {highlights.top_picks.map((pick, i) => (
+          <TopPickCard key={i} pick={pick} index={i} onSelect={onSelect} />
         ))}
-        <HighlightCard eyebrow="Most volume" row={highlights.most_volume} onSelect={onSelect} />
+        <HighlightCard eyebrow="Most volume" row={highlights.most_volume} timeframe="combined" onSelect={onSelect} />
         {TIMEFRAME_KEYS.map(({ key, label }) => (
-          <HighlightCard key={key} eyebrow={label} row={highlights.by_timeframe[key]} onSelect={onSelect} />
+          <HighlightCard key={key} eyebrow={label} row={highlights.by_timeframe[key]} timeframe={key} onSelect={onSelect} />
         ))}
       </div>
     </div>

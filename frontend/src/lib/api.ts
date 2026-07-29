@@ -2,11 +2,12 @@ import type {
   AuthStatusOut,
   ChatMessage,
   ConsensusFilters,
-  ConsensusRowOut,
   ExcludedMarketOut,
   ExcludedTraderOut,
   HealthOut,
   HighlightsOut,
+  LeanOut,
+  PaginatedConsensusOut,
   ScanOut,
   ScoringWeights,
   SummaryOut,
@@ -72,17 +73,23 @@ export function fetchHighlights(): Promise<HighlightsOut> {
   return getJson<HighlightsOut>("/api/highlights");
 }
 
-export function fetchConsensus(filters: ConsensusFilters): Promise<ConsensusRowOut[]> {
+export function fetchConsensus(filters: ConsensusFilters): Promise<PaginatedConsensusOut> {
   const params = new URLSearchParams({
     timeframe: filters.timeframe,
     top_n: String(filters.top_n),
     status: filters.status,
+    page: String(filters.page),
   });
   if (filters.category) params.set("category", filters.category);
   if (filters.min_whales > 0) params.set("min_whales", String(filters.min_whales));
   if (filters.min_value > 0) params.set("min_value", String(filters.min_value));
   if (filters.search.trim()) params.set("search", filters.search.trim());
-  return getJson<ConsensusRowOut[]>(`/api/consensus?${params.toString()}`);
+  return getJson<PaginatedConsensusOut>(`/api/consensus?${params.toString()}`);
+}
+
+export function fetchConsensusLean(rowId: string, timeframe: string, topN: number): Promise<LeanOut> {
+  const params = new URLSearchParams({ timeframe, top_n: String(topN) });
+  return getJson<LeanOut>(`/api/consensus/${encodeURIComponent(rowId)}/lean?${params.toString()}`);
 }
 
 // ---- auth -------------------------------------------------------------
@@ -97,6 +104,10 @@ export function adminLogin(password: string): Promise<{ ok: boolean }> {
 
 export function adminLogout(): Promise<{ ok: boolean }> {
   return postJson("/api/auth/admin-logout", {});
+}
+
+export function logout(): Promise<{ ok: boolean }> {
+  return postJson("/api/auth/logout", {});
 }
 
 export function fetchAuthStatus(): Promise<AuthStatusOut> {

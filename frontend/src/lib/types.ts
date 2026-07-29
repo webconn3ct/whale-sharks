@@ -52,10 +52,35 @@ export interface HealthOut {
   last_refresh_at: string | null;
 }
 
+export interface MatchupOut {
+  leader: ConsensusRowOut;
+  other: ConsensusRowOut;
+  reasoning: string;
+}
+
+export interface TopPickOut {
+  kind: "single" | "matchup";
+  single: ConsensusRowOut | null;
+  matchup: MatchupOut | null;
+}
+
 export interface HighlightsOut {
-  top_picks: ConsensusRowOut[];
+  top_picks: TopPickOut[];
   most_volume: ConsensusRowOut | null;
   by_timeframe: Record<string, ConsensusRowOut | null>;
+}
+
+export interface LeanOut {
+  facts: Record<string, unknown>;
+  reasoning: string;
+}
+
+export interface PaginatedConsensusOut {
+  items: ConsensusRowOut[];
+  page: number;
+  page_size: number;
+  total_items: number;
+  total_pages: number;
 }
 
 export interface ConsensusFilters {
@@ -66,6 +91,7 @@ export interface ConsensusFilters {
   min_whales: number;
   min_value: number;
   search: string;
+  page: number;
 }
 
 export interface AuthStatusOut {

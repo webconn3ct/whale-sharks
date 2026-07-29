@@ -40,7 +40,7 @@ export function ChatWidget() {
         aria-label="Open chat assistant"
         className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-2xl transition-transform hover:scale-105"
       >
-        <WhaleSharkLogo size={28} className="text-white" />
+        <WhaleSharkLogo size={28} />
       </button>
     );
   }
@@ -49,7 +49,7 @@ export function ChatWidget() {
     <div className="fixed bottom-5 right-5 z-40 flex h-[520px] w-[360px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)] shadow-2xl">
       <div className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3">
         <div className="flex items-center gap-2">
-          <WhaleSharkLogo size={20} className="text-[var(--accent)]" />
+          <WhaleSharkLogo size={20} />
           <span className="text-sm font-medium">Whale Sharks Assistant</span>
         </div>
         <button onClick={() => setOpen(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">

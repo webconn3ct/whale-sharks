@@ -319,7 +319,7 @@ export function AdminPanel({ onLoggedOut }: { onLoggedOut: () => void }) {
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
       <header className="mb-6 flex items-center gap-3">
-        <WhaleSharkLogo size={32} className="text-[var(--accent)]" />
+        <WhaleSharkLogo size={32} />
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Admin panel</h1>
           <a href="/" className="text-sm text-[var(--text-muted)] hover:text-[var(--text-secondary)]">

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -45,6 +46,14 @@ class ConsensusRowOut(BaseModel):
     holders: list[HolderOut] = []
 
 
+class PaginatedConsensusOut(BaseModel):
+    items: list[ConsensusRowOut]
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int
+
+
 class SummaryOut(BaseModel):
     tracked_traders: int
     active_positions: int
@@ -59,10 +68,34 @@ class HealthOut(BaseModel):
     last_refresh_at: datetime | None
 
 
+class LeanOut(BaseModel):
+    """Data-backed 'which way to lean' recommendation for a single market,
+    shown in the market detail view."""
+
+    facts: dict
+    reasoning: str
+
+
+class MatchupOut(BaseModel):
+    """Two opposing outcomes of the SAME market that both scored high enough
+    to be a top pick — shown together with reasoning instead of as two
+    separate, contradictory picks."""
+
+    leader: ConsensusRowOut  # higher consensus_score side
+    other: ConsensusRowOut  # lower consensus_score side
+    reasoning: str
+
+
+class TopPickOut(BaseModel):
+    kind: Literal["single", "matchup"]
+    single: ConsensusRowOut | None = None
+    matchup: MatchupOut | None = None
+
+
 class HighlightsOut(BaseModel):
     """Curated picks shown in the 'recommendations' strip above the table."""
 
-    top_picks: list[ConsensusRowOut]  # top 2 by consensus_score, combined/top25
+    top_picks: list[TopPickOut]  # top 3 slots by consensus_score, combined/top25
     most_volume: ConsensusRowOut | None  # highest combined_value, combined/top25
     by_timeframe: dict[str, ConsensusRowOut | None]  # "day"/"week"/"month"/"all_time" -> #1 pick
 
@@ -83,9 +116,12 @@ class ConsensusSnapshot(BaseModel):
     variants: dict[str, list[ConsensusRowOut]]
 
     def categories(self) -> list[str]:
+        """Only categories with at least one currently-active trade — an
+        option for a category nobody's actively holding is dead weight in
+        the filter dropdown."""
         cats: set[str] = set()
         for rows in self.variants.values():
             for row in rows:
-                if row.category:
+                if row.category and row.is_active:
                     cats.add(row.category)
         return sorted(cats)

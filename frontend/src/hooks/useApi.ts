@@ -1,5 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchAuthStatus, fetchCategories, fetchConsensus, fetchHighlights, fetchSummary } from "../lib/api";
+import {
+  fetchAuthStatus,
+  fetchCategories,
+  fetchConsensus,
+  fetchConsensusLean,
+  fetchHighlights,
+  fetchSummary,
+} from "../lib/api";
 import type { ConsensusFilters } from "../lib/types";
 
 const SUMMARY_POLL_MS = 60_000;
@@ -49,6 +56,16 @@ export function useConsensus(filters: ConsensusFilters) {
     queryKey: ["consensus", filters],
     queryFn: () => fetchConsensus(filters),
     refetchInterval: CONSENSUS_POLL_MS,
+    retry: shouldRetry,
+  });
+}
+
+export function useConsensusLean(rowId: string | null, timeframe: string, topN: number) {
+  return useQuery({
+    queryKey: ["consensus-lean", rowId, timeframe, topN],
+    queryFn: () => fetchConsensusLean(rowId as string, timeframe, topN),
+    enabled: rowId !== null,
+    staleTime: CONSENSUS_POLL_MS,
     retry: shouldRetry,
   });
 }

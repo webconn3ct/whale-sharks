@@ -66,6 +66,12 @@ async def admin_logout(response: Response):
     return {"ok": True}
 
 
+@router.post("/logout")
+async def logout(response: Response):
+    response.delete_cookie(VISITOR_COOKIE, path="/")
+    return {"ok": True}
+
+
 @router.get("/status", response_model=AuthStatusOut)
 def status(request: Request, settings: Settings = Depends(get_settings)) -> AuthStatusOut:
     visitor_token = request.cookies.get(VISITOR_COOKIE)
