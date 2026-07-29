@@ -29,11 +29,13 @@ from app.db.models import (
     ConsensusPositionTrader,
     ExcludedMarket,
     ExcludedTrader,
+    LoginEvent,
     Market,
     Scan,
     ScanStatus,
     TraderLeaderboardRank,
     TraderTrackRecord,
+    WhaleAlert,
 )
 from app.db.models import Trader as TraderModel
 from app.integrations.polymarket_client import MarketMetadata
@@ -646,3 +648,76 @@ async def insert_bot_recalibration(
 async def list_bot_recalibrations(session: AsyncSession, limit: int = 20) -> list[BotRecalibration]:
     result = await session.execute(select(BotRecalibration).order_by(BotRecalibration.id.desc()).limit(limit))
     return list(result.scalars().all())
+
+
+# --- admin: login tracking ---------------------------------------------------
+
+
+async def record_login_event(session: AsyncSession, role: str, visitor_hash: str) -> None:
+    session.add(LoginEvent(role=role, visitor_hash=visitor_hash, occurred_at=datetime.now(UTC)))
+    await session.commit()
+
+
+async def get_login_stats(session: AsyncSession) -> dict:
+    since_24h = datetime.now(UTC) - timedelta(hours=24)
+    total = await session.scalar(select(func.count()).select_from(LoginEvent))
+    unique_all_time = await session.scalar(select(func.count(func.distinct(LoginEvent.visitor_hash))))
+    total_24h = await session.scalar(
+        select(func.count()).select_from(LoginEvent).where(LoginEvent.occurred_at >= since_24h)
+    )
+    unique_24h = await session.scalar(
+        select(func.count(func.distinct(LoginEvent.visitor_hash))).where(LoginEvent.occurred_at >= since_24h)
+    )
+    return {
+        "total_logins": total or 0,
+        "unique_visitors": unique_all_time or 0,
+        "logins_last_24h": total_24h or 0,
+        "unique_visitors_last_24h": unique_24h or 0,
+    }
+
+
+# --- admin: large-trade ("whale alert") notifications -------------------------
+
+
+async def get_market_titles(session: AsyncSession, condition_ids: list[str]) -> dict[str, str]:
+    if not condition_ids:
+        return {}
+    result = await session.execute(
+        select(Market.condition_id, Market.title).where(Market.condition_id.in_(condition_ids))
+    )
+    return {cid: title for cid, title in result.all()}
+
+
+async def record_whale_alerts(session: AsyncSession, alerts: list[dict]) -> int:
+    """Insert-once per (wallet, market, outcome) — a whale sitting on a big
+    position for weeks shouldn't re-alert every 15-minute scan. Returns the
+    number of genuinely NEW alerts inserted."""
+    if not alerts:
+        return 0
+    stmt = pg_insert(WhaleAlert).values(alerts)
+    stmt = stmt.on_conflict_do_nothing(
+        index_elements=[WhaleAlert.wallet_address, WhaleAlert.condition_id, WhaleAlert.outcome_index]
+    )
+    result = await session.execute(stmt.returning(WhaleAlert.id))
+    return len(result.all())
+
+
+async def list_whale_alerts(session: AsyncSession, limit: int = 50) -> list[WhaleAlert]:
+    result = await session.execute(select(WhaleAlert).order_by(WhaleAlert.detected_at.desc()).limit(limit))
+    return list(result.scalars().all())
+
+
+async def count_unacknowledged_whale_alerts(session: AsyncSession) -> int:
+    return await session.scalar(
+        select(func.count()).select_from(WhaleAlert).where(WhaleAlert.acknowledged.is_(False))
+    ) or 0
+
+
+async def acknowledge_whale_alert(session: AsyncSession, alert_id: int) -> None:
+    await session.execute(WhaleAlert.__table__.update().where(WhaleAlert.id == alert_id).values(acknowledged=True))
+    await session.commit()
+
+
+async def acknowledge_all_whale_alerts(session: AsyncSession) -> None:
+    await session.execute(WhaleAlert.__table__.update().where(WhaleAlert.acknowledged.is_(False)).values(acknowledged=True))
+    await session.commit()

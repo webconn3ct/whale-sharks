@@ -134,6 +134,25 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface LoginStatsOut {
+  total_logins: number;
+  unique_visitors: number;
+  logins_last_24h: number;
+  unique_visitors_last_24h: number;
+}
+
+export interface WhaleAlertOut {
+  id: number;
+  wallet_address: string;
+  username: string | null;
+  condition_id: string;
+  outcome_label: string;
+  market_title: string;
+  position_value: number;
+  detected_at: string;
+  acknowledged: boolean;
+}
+
 export interface BotStateOut {
   cash_balance: number;
   starting_balance: number;

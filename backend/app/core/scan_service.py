@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from app.config import Settings
 from app.core import bot_service
@@ -94,6 +95,10 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
         await repository.insert_leaderboard_ranks(session, scan_id, traders, trader_ids)
         await repository.upsert_track_records(session, new_track_records, trader_ids)
 
+        new_whale_alerts = await _record_whale_alerts(session, settings, traders, positions_by_wallet, condition_ids)
+        if new_whale_alerts:
+            logger.info("checkpoint: %d new whale alert(s) ($%.0f+ single positions)", new_whale_alerts, settings.whale_alert_threshold)
+
         # Only the widest cut (top_n=CANONICAL_TOP_N) is computed/persisted per
         # variant — smaller top-N cuts are derived from it at snapshot-load
         # time (see repository.load_latest_snapshot), since a trader
@@ -140,6 +145,32 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
         CANONICAL_TOP_N,
         len(new_track_records),
     )
+
+
+async def _record_whale_alerts(session, settings: Settings, traders: dict, positions_by_wallet: dict, condition_ids: list[str]) -> int:
+    """Flags any single trader's position worth >= whale_alert_threshold —
+    surfaced in the admin notifications feed. Insert-once per (wallet,
+    market, outcome), so a whale holding a big position for weeks only
+    alerts once, not every 15-minute scan."""
+    market_titles = await repository.get_market_titles(session, condition_ids)
+    now = datetime.now(UTC)
+    rows = [
+        {
+            "wallet_address": wallet,
+            "username": traders[wallet].username if wallet in traders else None,
+            "condition_id": p.condition_id,
+            "outcome_index": p.outcome_index,
+            "outcome_label": p.outcome,
+            "market_title": market_titles.get(p.condition_id, ""),
+            "position_value": p.current_value,
+            "detected_at": now,
+            "acknowledged": False,
+        }
+        for wallet, positions in positions_by_wallet.items()
+        for p in positions
+        if p.current_value >= settings.whale_alert_threshold
+    ]
+    return await repository.record_whale_alerts(session, rows)
 
 
 async def _load_scoring_weights(settings: Settings) -> tuple[float, float]:

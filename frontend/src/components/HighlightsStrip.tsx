@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ConsensusRowOut, HighlightsOut, MatchupOut, TopPickOut, Variant } from "../lib/types";
 import { formatCompactCurrency, formatProbability, TIMEFRAME_LABEL } from "../lib/format";
 
@@ -7,6 +8,9 @@ type SelectFn = (row: ConsensusRowOut, timeframe: Variant, topN: number) => void
 // Monthly, and All-Time are still filterable via the timeframe dropdown below.
 const TIMEFRAME_KEYS: { key: Variant; label: string }[] = [{ key: "day", label: TIMEFRAME_LABEL.DAY }];
 const HIGHLIGHTS_TOP_N = 25;
+
+// All 5 highlight boxes share one footprint so the strip reads as a uniform row.
+const CARD_SIZE = "w-64 shrink-0 min-h-[112px]";
 
 function HighlightCard({
   eyebrow,
@@ -23,7 +27,7 @@ function HighlightCard({
     <button
       onClick={() => row && onSelect(row, timeframe, HIGHLIGHTS_TOP_N)}
       disabled={!row}
-      className="flex w-56 shrink-0 flex-col items-start gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-4 py-3 text-left transition-colors hover:bg-[var(--bg-surface-raised)] disabled:cursor-default disabled:hover:bg-[var(--bg-surface)]"
+      className={`flex ${CARD_SIZE} flex-col items-start justify-center gap-1 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-4 py-3 text-left transition-colors hover:bg-[var(--bg-surface-raised)] disabled:cursor-default disabled:hover:bg-[var(--bg-surface)]`}
     >
       <span className="text-xs font-medium uppercase tracking-wide text-[var(--accent)]">{eyebrow}</span>
       {row ? (
@@ -78,8 +82,10 @@ function MatchupCard({
   matchup: MatchupOut;
   onSelect: SelectFn;
 }) {
+  const [showReasoning, setShowReasoning] = useState(false);
+
   return (
-    <div className="flex w-80 shrink-0 flex-col gap-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-4 py-3 text-left">
+    <div className={`flex ${CARD_SIZE} flex-col justify-center gap-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-4 py-3 text-left`}>
       <span className="text-xs font-medium uppercase tracking-wide text-[var(--accent)]">{eyebrow} · Matchup</span>
       <span className="truncate text-sm font-medium text-[var(--text-primary)]" title={matchup.leader.market_title}>
         {matchup.leader.market_title || "Untitled market"}
@@ -96,7 +102,17 @@ function MatchupCard({
           onSelect={() => onSelect(matchup.other, "combined", HIGHLIGHTS_TOP_N)}
         />
       </div>
-      <p className="text-xs leading-relaxed text-[var(--text-secondary)]">{matchup.reasoning}</p>
+      {showReasoning ? (
+        <p className="text-xs leading-relaxed text-[var(--text-secondary)]">{matchup.reasoning}</p>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowReasoning(true)}
+          className="text-left text-xs text-[var(--text-muted)] underline decoration-dotted underline-offset-2 hover:text-[var(--text-secondary)]"
+        >
+          Why this pick?
+        </button>
+      )}
     </div>
   );
 }

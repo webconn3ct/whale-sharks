@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  acknowledgeAllWhaleAlerts,
+  acknowledgeWhaleAlert,
   adminLogout,
   changeAccessCode,
   changeAdminPassword,
@@ -9,7 +11,9 @@ import {
   fetchAdminScans,
   fetchExcludedMarkets,
   fetchExcludedTraders,
+  fetchLoginStats,
   fetchScoringWeights,
+  fetchWhaleAlerts,
   triggerRescan,
   unexcludeMarket,
   unexcludeTrader,
@@ -89,6 +93,102 @@ function OperationalControls() {
           </tbody>
         </table>
       </div>
+    </Section>
+  );
+}
+
+function StatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-page)] px-4 py-3">
+      <div className="text-xs text-[var(--text-muted)]">{label}</div>
+      <div className="mt-1 text-xl font-semibold text-[var(--text-primary)]">{value}</div>
+    </div>
+  );
+}
+
+function LoginStatsSection() {
+  const statsQuery = useQuery({ queryKey: ["admin", "login-stats"], queryFn: fetchLoginStats, refetchInterval: 60_000 });
+  const s = statsQuery.data;
+
+  return (
+    <Section title="Logins">
+      {!s ? (
+        <p className="text-sm text-[var(--text-muted)]">Loading…</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatTile label="Unique visitors (all time)" value={String(s.unique_visitors)} />
+          <StatTile label="Total logins (all time)" value={String(s.total_logins)} />
+          <StatTile label="Unique visitors (24h)" value={String(s.unique_visitors_last_24h)} />
+          <StatTile label="Logins (24h)" value={String(s.logins_last_24h)} />
+        </div>
+      )}
+      <p className="mt-3 text-xs text-[var(--text-muted)]">
+        "Unique" is approximated from a salted hash of the requester's IP — no raw IPs are stored.
+      </p>
+    </Section>
+  );
+}
+
+function NotificationsSection() {
+  const qc = useQueryClient();
+  const alertsQuery = useQuery({ queryKey: ["admin", "whale-alerts"], queryFn: fetchWhaleAlerts, refetchInterval: 30_000 });
+  const ackMutation = useMutation({
+    mutationFn: acknowledgeWhaleAlert,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "whale-alerts"] }),
+  });
+  const ackAllMutation = useMutation({
+    mutationFn: acknowledgeAllWhaleAlerts,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "whale-alerts"] }),
+  });
+
+  const alerts = alertsQuery.data ?? [];
+  const unread = alerts.filter((a) => !a.acknowledged).length;
+
+  return (
+    <Section title="Notifications — large single-whale trades ($100k+)">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-sm text-[var(--text-secondary)]">
+          {unread > 0 ? `${unread} unread` : "All caught up."}
+        </p>
+        {unread > 0 && (
+          <button
+            onClick={() => ackAllMutation.mutate()}
+            disabled={ackAllMutation.isPending}
+            className="text-xs text-[var(--accent)] hover:underline"
+          >
+            Mark all read
+          </button>
+        )}
+      </div>
+      <ul className="space-y-2">
+        {alerts.map((a) => (
+          <li
+            key={a.id}
+            className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm ${
+              a.acknowledged ? "border-[var(--border-hairline)]" : "border-[var(--accent)] bg-[var(--bg-page)]"
+            }`}
+          >
+            <div className="min-w-0">
+              <div className="truncate font-medium text-[var(--text-primary)]" title={a.market_title}>
+                {a.market_title || "Untitled market"} <span className="text-[var(--text-muted)]">· {a.outcome_label}</span>
+              </div>
+              <div className="text-xs text-[var(--text-muted)]">
+                {a.username || `${a.wallet_address.slice(0, 6)}…${a.wallet_address.slice(-4)}`} —{" "}
+                {formatCompactCurrency(a.position_value)} · {formatRelativeTime(a.detected_at)}
+              </div>
+            </div>
+            {!a.acknowledged && (
+              <button
+                onClick={() => ackMutation.mutate(a.id)}
+                className="shrink-0 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Dismiss
+              </button>
+            )}
+          </li>
+        ))}
+        {alerts.length === 0 && <li className="text-sm text-[var(--text-muted)]">No large trades flagged yet.</li>}
+      </ul>
     </Section>
   );
 }
@@ -267,7 +367,10 @@ function AccessManagement({ onLoggedOut }: { onLoggedOut: () => void }) {
     mutationFn: () => changeAdminPassword(newPassword.trim()),
     onSuccess: () => setNewPassword(""),
   });
-  const logoutMutation = useMutation({ mutationFn: adminLogout, onSuccess: onLoggedOut });
+  const handleLogout = () => {
+    onLoggedOut();
+    void adminLogout();
+  };
 
   return (
     <Section title="Access management">
@@ -306,7 +409,7 @@ function AccessManagement({ onLoggedOut }: { onLoggedOut: () => void }) {
         </div>
       </div>
       <button
-        onClick={() => logoutMutation.mutate()}
+        onClick={handleLogout}
         className="mt-5 rounded-md border border-[var(--border-hairline)] px-4 py-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
       >
         Log out of admin
@@ -328,6 +431,8 @@ export function AdminPanel({ onLoggedOut }: { onLoggedOut: () => void }) {
         </div>
       </header>
       <div className="flex flex-col gap-6">
+        <NotificationsSection />
+        <LoginStatsSection />
         <OperationalControls />
         <ScoringWeightsForm />
         <ModerationSection />

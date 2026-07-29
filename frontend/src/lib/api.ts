@@ -9,10 +9,12 @@ import type {
   HealthOut,
   HighlightsOut,
   LeanOut,
+  LoginStatsOut,
   PaginatedConsensusOut,
   ScanOut,
   ScoringWeights,
   SummaryOut,
+  WhaleAlertOut,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -170,6 +172,22 @@ export function changeAccessCode(newCode: string): Promise<{ ok: boolean }> {
 
 export function changeAdminPassword(newPassword: string): Promise<{ ok: boolean }> {
   return postJson("/api/admin/admin-password", { new_password: newPassword });
+}
+
+export function fetchLoginStats(): Promise<LoginStatsOut> {
+  return getJson<LoginStatsOut>("/api/admin/login-stats");
+}
+
+export function fetchWhaleAlerts(): Promise<WhaleAlertOut[]> {
+  return getJson<WhaleAlertOut[]>("/api/admin/whale-alerts");
+}
+
+export function acknowledgeWhaleAlert(id: number): Promise<{ ok: boolean }> {
+  return postJson(`/api/admin/whale-alerts/${id}/acknowledge`, {});
+}
+
+export function acknowledgeAllWhaleAlerts(): Promise<{ ok: boolean }> {
+  return postJson("/api/admin/whale-alerts/acknowledge-all", {});
 }
 
 // ---- mini whale bot ------------------------------------------------------

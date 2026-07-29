@@ -81,6 +81,79 @@ async def trigger_rescan(request: Request, background_tasks: BackgroundTasks, se
     return {"ok": True, "detail": "Scan started in the background — check /api/admin/scans shortly"}
 
 
+# ---- login tracking ---------------------------------------------------------
+
+
+class LoginStatsOut(BaseModel):
+    total_logins: int
+    unique_visitors: int
+    logins_last_24h: int
+    unique_visitors_last_24h: int
+
+
+@router.get("/login-stats", response_model=LoginStatsOut)
+async def get_login_stats():
+    async with get_session() as session:
+        stats = await repository.get_login_stats(session)
+    return LoginStatsOut(**stats)
+
+
+# ---- notifications: large single-whale trades --------------------------------
+
+
+class WhaleAlertOut(BaseModel):
+    id: int
+    wallet_address: str
+    username: str | None
+    condition_id: str
+    outcome_label: str
+    market_title: str
+    position_value: float
+    detected_at: datetime
+    acknowledged: bool
+
+
+@router.get("/whale-alerts", response_model=list[WhaleAlertOut])
+async def get_whale_alerts(limit: int = 50):
+    async with get_session() as session:
+        alerts = await repository.list_whale_alerts(session, limit=limit)
+    return [
+        WhaleAlertOut(
+            id=a.id,
+            wallet_address=a.wallet_address,
+            username=a.username,
+            condition_id=a.condition_id,
+            outcome_label=a.outcome_label,
+            market_title=a.market_title,
+            position_value=float(a.position_value),
+            detected_at=a.detected_at,
+            acknowledged=a.acknowledged,
+        )
+        for a in alerts
+    ]
+
+
+@router.get("/whale-alerts/unacknowledged-count")
+async def get_unacknowledged_whale_alert_count():
+    async with get_session() as session:
+        count = await repository.count_unacknowledged_whale_alerts(session)
+    return {"count": count}
+
+
+@router.post("/whale-alerts/{alert_id}/acknowledge")
+async def acknowledge_whale_alert(alert_id: int):
+    async with get_session() as session:
+        await repository.acknowledge_whale_alert(session, alert_id)
+    return {"ok": True}
+
+
+@router.post("/whale-alerts/acknowledge-all")
+async def acknowledge_all_whale_alerts():
+    async with get_session() as session:
+        await repository.acknowledge_all_whale_alerts(session)
+    return {"ok": True}
+
+
 # ---- content moderation -----------------------------------------------------
 
 

@@ -273,6 +273,41 @@ class BotPosition(Base):
     realized_pnl: Mapped[float | None] = mapped_column(Numeric(10, 2))
 
 
+class LoginEvent(Base):
+    """One row per successful login (visitor unlock or admin login) — powers
+    the admin panel's unique-login tracking. `visitor_hash` is a salted hash
+    of the requester's IP, never the raw address, kept only to approximate
+    uniqueness."""
+
+    __tablename__ = "login_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    role: Mapped[str] = mapped_column(String(10))  # "visitor" | "admin"
+    visitor_hash: Mapped[str] = mapped_column(String(64), index=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class WhaleAlert(Base):
+    """A single trader's position on one market/outcome crossing the
+    large-trade threshold — surfaced in the admin notifications feed.
+    Recorded once per (wallet, market, outcome) via a unique constraint so
+    a whale holding a big position for weeks doesn't re-alert every scan."""
+
+    __tablename__ = "whale_alerts"
+    __table_args__ = (UniqueConstraint("wallet_address", "condition_id", "outcome_index"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    wallet_address: Mapped[str] = mapped_column(String(42))
+    username: Mapped[str | None] = mapped_column(String(255))
+    condition_id: Mapped[str] = mapped_column(String(66))
+    outcome_index: Mapped[int] = mapped_column(SmallInteger)
+    outcome_label: Mapped[str] = mapped_column(String(100))
+    market_title: Mapped[str] = mapped_column(Text)
+    position_value: Mapped[float] = mapped_column(Numeric(18, 6))
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class BotRecalibration(Base):
     """Audit log of every threshold adjustment the bot's recalibration loop
     makes, with the reasoning — so the strategy stays explainable, not a

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { BotPositionOut, BotStateOut } from "../lib/types";
 import { formatCurrency, formatPercent, formatRelativeTime } from "../lib/format";
 import { useBotPositions, useBotState } from "../hooks/useApi";
+import { KrillIcon } from "./KrillIcon";
 
 function StatTile({ label, value, tone }: { label: string; value: string; tone?: "good" | "critical" | "accent" }) {
   const color =
@@ -85,9 +86,13 @@ export function BotSection() {
     <div className="mb-6 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-page)] p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">Mini Whale Bot</h2>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-[var(--text-primary)]">
+            <KrillIcon size={18} />
+            KrillBot
+          </h2>
           <p className="text-xs text-[var(--text-muted)]">
-            A hypothetical $500, trading the same whale-consensus signal live — not real money, not investment advice.
+            Our simulated trading bot — testing the whale-consensus strategy live with a hypothetical $500. Not
+            real money, not investment advice.
           </p>
         </div>
         {stateQuery.data?.last_recalibrated_at && (

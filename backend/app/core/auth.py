@@ -3,8 +3,11 @@ accounts): a visitor access code that unlocks the public dashboard, and a
 separate, shorter-lived admin password that unlocks the admin panel. Tokens
 are signed (itsdangerous) and carried in httpOnly cookies — no session store."""
 
+import hashlib
+
 import bcrypt
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from starlette.requests import Request
 
 from app.config import Settings
 
@@ -38,3 +41,13 @@ def verify_token(settings: Settings, token: str, max_age_seconds: int) -> bool:
     except (BadSignature, SignatureExpired):
         return False
     return isinstance(data, dict) and "role" in data
+
+
+def client_ip_hash(settings: Settings, request: Request) -> str:
+    """Salted hash of the requester's IP — used only to approximate unique
+    login counts in the admin panel, never stored or logged in the clear.
+    Render sits behind a proxy, so the real client IP is the first hop in
+    X-Forwarded-For, not request.client.host (that's the proxy)."""
+    forwarded = request.headers.get("x-forwarded-for")
+    ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
+    return hashlib.sha256(f"{settings.secret_key}:{ip}".encode()).hexdigest()

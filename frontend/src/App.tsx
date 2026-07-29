@@ -36,7 +36,6 @@ const DEFAULT_FILTERS: ConsensusFilters = {
 function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   const [filters, setFilters] = useState<ConsensusFilters>(DEFAULT_FILTERS);
   const [selectedRow, setSelectedRow] = useState<SelectedRow | null>(null);
-  const [loggingOut, setLoggingOut] = useState(false);
 
   const selectFromTable = (row: ConsensusRowOut) =>
     setSelectedRow({ row, timeframe: filters.timeframe, topN: filters.top_n });
@@ -49,13 +48,11 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
   const notReady =
     summaryQuery.error instanceof ApiNotReadyError || consensusQuery.error instanceof ApiNotReadyError;
 
-  const handleLogout = async () => {
-    setLoggingOut(true);
-    try {
-      await logout();
-    } finally {
-      onLoggedOut();
-    }
+  const handleLogout = () => {
+    // Flip the UI immediately — don't wait on the network round-trip.
+    // The actual cookie-clearing call fires in the background.
+    onLoggedOut();
+    void logout();
   };
 
   // Any filter change other than the page itself invalidates the current
@@ -75,10 +72,9 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
         </div>
         <button
           onClick={handleLogout}
-          disabled={loggingOut}
-          className="rounded-md border border-[var(--border-hairline)] px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)] disabled:opacity-50"
+          className="rounded-md border border-[var(--border-hairline)] px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
         >
-          {loggingOut ? "Logging out…" : "Logout"}
+          Logout
         </button>
       </header>
 
@@ -137,7 +133,11 @@ function DashboardRoute() {
   if (!authQuery.data?.visitor) {
     return <AccessGate onUnlocked={() => qc.invalidateQueries({ queryKey: ["auth-status"] })} />;
   }
-  return <Dashboard onLoggedOut={() => qc.invalidateQueries({ queryKey: ["auth-status"] })} />;
+  return (
+    <Dashboard
+      onLoggedOut={() => qc.setQueryData(["auth-status"], { visitor: false, admin: false })}
+    />
+  );
 }
 
 function AdminRoute() {
@@ -148,7 +148,11 @@ function AdminRoute() {
   if (!authQuery.data?.admin) {
     return <AdminLogin onLoggedIn={() => qc.invalidateQueries({ queryKey: ["auth-status"] })} />;
   }
-  return <AdminPanel onLoggedOut={() => qc.invalidateQueries({ queryKey: ["auth-status"] })} />;
+  return (
+    <AdminPanel
+      onLoggedOut={() => qc.setQueryData(["auth-status"], (prev: { visitor: boolean; admin: boolean } | undefined) => ({ visitor: prev?.visitor ?? false, admin: false }))}
+    />
+  );
 }
 
 function App() {
