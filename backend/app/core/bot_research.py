@@ -86,7 +86,7 @@ async def research_gate(
         logger.exception("bot research gate failed — defaulting to confirm")
         return DEFAULT_VERDICT
     finally:
-        await client.aclose()
+        await client.close()
 
     if response.stop_reason == "refusal":
         return DEFAULT_VERDICT
