@@ -153,6 +153,21 @@ export interface WhaleAlertOut {
   acknowledged: boolean;
 }
 
+export interface AccessCodeOut {
+  id: number;
+  name: string;
+  created_at: string;
+  active: boolean;
+}
+
+export interface SupportRequestOut {
+  id: number;
+  summary: string;
+  contact: string;
+  created_at: string;
+  acknowledged: boolean;
+}
+
 export interface BotStateOut {
   cash_balance: number;
   starting_balance: number;

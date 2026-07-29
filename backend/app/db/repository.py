@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.schemas import ConsensusRowOut, ConsensusSnapshot, HolderOut, variant_key
+from app.core.auth import hash_secret, verify_secret
 from app.core.consensus_engine import (
     CANONICAL_TOP_N,
     TOP_N_OPTIONS,
@@ -19,6 +20,7 @@ from app.core.consensus_engine import (
     score_from_weight_and_value,
 )
 from app.db.models import (
+    AccessCode,
     AppConfig,
     BotExitReason,
     BotPosition,
@@ -33,6 +35,7 @@ from app.db.models import (
     Market,
     Scan,
     ScanStatus,
+    SupportRequest,
     TraderLeaderboardRank,
     TraderTrackRecord,
     WhaleAlert,
@@ -529,13 +532,8 @@ async def get_app_config(session: AsyncSession) -> AppConfig | None:
     return result.scalar_one_or_none()
 
 
-async def create_app_config(session: AsyncSession, access_code_hash: str, admin_password_hash: str) -> AppConfig:
-    config = AppConfig(
-        id=1,
-        access_code_hash=access_code_hash,
-        admin_password_hash=admin_password_hash,
-        updated_at=datetime.now(UTC),
-    )
+async def create_app_config(session: AsyncSession, admin_password_hash: str) -> AppConfig:
+    config = AppConfig(id=1, admin_password_hash=admin_password_hash, updated_at=datetime.now(UTC))
     session.add(config)
     await session.commit()
     return config
@@ -720,4 +718,57 @@ async def acknowledge_whale_alert(session: AsyncSession, alert_id: int) -> None:
 
 async def acknowledge_all_whale_alerts(session: AsyncSession) -> None:
     await session.execute(WhaleAlert.__table__.update().where(WhaleAlert.acknowledged.is_(False)).values(acknowledged=True))
+    await session.commit()
+
+
+# --- admin: named visitor access codes ---------------------------------------
+
+
+async def list_access_codes(session: AsyncSession) -> list[AccessCode]:
+    result = await session.execute(select(AccessCode).order_by(AccessCode.created_at.desc()))
+    return list(result.scalars().all())
+
+
+async def create_access_code(session: AsyncSession, name: str, code: str) -> AccessCode:
+    access_code = AccessCode(name=name, code_hash=hash_secret(code), created_at=datetime.now(UTC), active=True)
+    session.add(access_code)
+    await session.commit()
+    return access_code
+
+
+async def revoke_access_code(session: AsyncSession, access_code_id: int) -> None:
+    await session.execute(AccessCode.__table__.update().where(AccessCode.id == access_code_id).values(active=False))
+    await session.commit()
+
+
+async def verify_any_access_code(session: AsyncSession, code: str) -> bool:
+    result = await session.execute(select(AccessCode.code_hash).where(AccessCode.active.is_(True)))
+    return any(verify_secret(code, code_hash) for (code_hash,) in result.all())
+
+
+# --- chat: KrillBot admin-help escalations -------------------------------------
+
+
+async def create_support_request(session: AsyncSession, summary: str, contact: str) -> SupportRequest:
+    request = SupportRequest(summary=summary, contact=contact, created_at=datetime.now(UTC), acknowledged=False)
+    session.add(request)
+    await session.commit()
+    return request
+
+
+async def list_support_requests(session: AsyncSession, limit: int = 50) -> list[SupportRequest]:
+    result = await session.execute(select(SupportRequest).order_by(SupportRequest.created_at.desc()).limit(limit))
+    return list(result.scalars().all())
+
+
+async def count_unacknowledged_support_requests(session: AsyncSession) -> int:
+    return await session.scalar(
+        select(func.count()).select_from(SupportRequest).where(SupportRequest.acknowledged.is_(False))
+    ) or 0
+
+
+async def acknowledge_support_request(session: AsyncSession, request_id: int) -> None:
+    await session.execute(
+        SupportRequest.__table__.update().where(SupportRequest.id == request_id).values(acknowledged=True)
+    )
     await session.commit()

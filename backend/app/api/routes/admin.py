@@ -231,18 +231,40 @@ async def unexclude_trader(wallet_address: str):
 # ---- access management -------------------------------------------------------
 
 
-class ChangeAccessCodeIn(BaseModel):
-    new_code: str = Field(min_length=4, max_length=64)
+class CreateAccessCodeIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    code: str = Field(min_length=4, max_length=64)
+
+
+class AccessCodeOut(BaseModel):
+    id: int
+    name: str
+    created_at: datetime
+    active: bool
 
 
 class ChangeAdminPasswordIn(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
-@router.post("/access-code")
-async def change_access_code(body: ChangeAccessCodeIn):
+@router.get("/access-codes", response_model=list[AccessCodeOut])
+async def get_access_codes():
     async with get_session() as session:
-        await repository.update_app_config(session, access_code_hash=hash_secret(body.new_code))
+        codes = await repository.list_access_codes(session)
+    return [AccessCodeOut(id=c.id, name=c.name, created_at=c.created_at, active=c.active) for c in codes]
+
+
+@router.post("/access-codes", response_model=AccessCodeOut)
+async def add_access_code(body: CreateAccessCodeIn):
+    async with get_session() as session:
+        code = await repository.create_access_code(session, body.name.strip(), body.code)
+    return AccessCodeOut(id=code.id, name=code.name, created_at=code.created_at, active=code.active)
+
+
+@router.post("/access-codes/{code_id}/revoke")
+async def revoke_access_code(code_id: int):
+    async with get_session() as session:
+        await repository.revoke_access_code(session, code_id)
     return {"ok": True}
 
 
@@ -250,4 +272,32 @@ async def change_access_code(body: ChangeAccessCodeIn):
 async def change_admin_password(body: ChangeAdminPasswordIn):
     async with get_session() as session:
         await repository.update_app_config(session, admin_password_hash=hash_secret(body.new_password))
+    return {"ok": True}
+
+
+# ---- KrillBot admin-help escalations ------------------------------------------
+
+
+class SupportRequestOut(BaseModel):
+    id: int
+    summary: str
+    contact: str
+    created_at: datetime
+    acknowledged: bool
+
+
+@router.get("/support-requests", response_model=list[SupportRequestOut])
+async def get_support_requests():
+    async with get_session() as session:
+        requests = await repository.list_support_requests(session)
+    return [
+        SupportRequestOut(id=r.id, summary=r.summary, contact=r.contact, created_at=r.created_at, acknowledged=r.acknowledged)
+        for r in requests
+    ]
+
+
+@router.post("/support-requests/{request_id}/acknowledge")
+async def acknowledge_support_request(request_id: int):
+    async with get_session() as session:
+        await repository.acknowledge_support_request(session, request_id)
     return {"ok": True}

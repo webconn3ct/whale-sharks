@@ -36,11 +36,9 @@ async def main() -> None:
             admin_password = _generate_code(16)
 
             async with get_session() as session:
-                await repository.create_app_config(
-                    session,
-                    access_code_hash=hash_secret(access_code),
-                    admin_password_hash=hash_secret(admin_password),
-                )
+                await repository.create_app_config(session, admin_password_hash=hash_secret(admin_password))
+            async with get_session() as session:
+                await repository.create_access_code(session, "original", access_code)
 
         print("=" * 60)
         print("Whale Sharks — initial credentials (shown once, save them now)")

@@ -1,4 +1,5 @@
 import type {
+  AccessCodeOut,
   AuthStatusOut,
   BotPositionOut,
   BotStateOut,
@@ -14,6 +15,7 @@ import type {
   ScanOut,
   ScoringWeights,
   SummaryOut,
+  SupportRequestOut,
   WhaleAlertOut,
 } from "./types";
 
@@ -166,12 +168,28 @@ export function unexcludeTrader(walletAddress: string): Promise<{ ok: boolean }>
   return del(`/api/admin/moderation/traders/${encodeURIComponent(walletAddress)}`);
 }
 
-export function changeAccessCode(newCode: string): Promise<{ ok: boolean }> {
-  return postJson("/api/admin/access-code", { new_code: newCode });
+export function fetchAccessCodes(): Promise<AccessCodeOut[]> {
+  return getJson<AccessCodeOut[]>("/api/admin/access-codes");
+}
+
+export function createAccessCode(name: string, code: string): Promise<AccessCodeOut> {
+  return postJson("/api/admin/access-codes", { name, code });
+}
+
+export function revokeAccessCode(id: number): Promise<{ ok: boolean }> {
+  return postJson(`/api/admin/access-codes/${id}/revoke`, {});
 }
 
 export function changeAdminPassword(newPassword: string): Promise<{ ok: boolean }> {
   return postJson("/api/admin/admin-password", { new_password: newPassword });
+}
+
+export function fetchSupportRequests(): Promise<SupportRequestOut[]> {
+  return getJson<SupportRequestOut[]>("/api/admin/support-requests");
+}
+
+export function acknowledgeSupportRequest(id: number): Promise<{ ok: boolean }> {
+  return postJson(`/api/admin/support-requests/${id}/acknowledge`, {});
 }
 
 export function fetchLoginStats(): Promise<LoginStatsOut> {

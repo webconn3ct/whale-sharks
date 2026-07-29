@@ -4,7 +4,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.api.deps import require_visitor
+from app.api.schemas import variant_key
 from app.config import Settings, get_settings
+from app.core import cache as cache_module
+from app.core.consensus_engine import Variant
 from app.db import repository
 from app.db.session import get_session
 
@@ -14,12 +17,32 @@ router = APIRouter(dependencies=[Depends(require_visitor)])
 
 MAX_HISTORY_MESSAGES = 20
 BOT_CONTEXT_RECENT_TRADES = 5
+TOP_PICKS_TOP_N = 25
 
-BASE_SYSTEM_PROMPT = """You are the site assistant for Whale Sharks, a dashboard that tracks Polymarket's \
-highest-performing traders and surfaces "whale consensus" — markets where multiple proven traders \
-independently hold the same position. You're also the voice of KrillBot — our simulated trading bot that \
-follows this same whale-consensus signal — and can discuss its strategy, performance, and trade history \
-using the live data given to you below.
+FLAG_FOR_ADMIN_HELP_TOOL = {
+    "name": "flag_for_admin_help",
+    "description": (
+        "Escalate this conversation to the Whale Sharks team when the visitor needs help you genuinely can't "
+        "give from the site data available to you — an account-specific issue, a bug report, a partnership or "
+        "business inquiry, anything requiring a human. Only call this once the visitor has given you a contact "
+        "method (email or Instagram handle) to be reached at — ask for one first if they haven't given it."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string", "description": "Brief summary of what the visitor needs help with."},
+            "contact": {"type": "string", "description": "The email or Instagram handle the visitor gave you."},
+        },
+        "required": ["summary", "contact"],
+    },
+}
+
+BASE_SYSTEM_PROMPT = """You ARE KrillBot — not an assistant who talks about KrillBot, you're KrillBot yourself, \
+the friendly face of Whale Sharks, a dashboard that tracks Polymarket's highest-performing traders and \
+surfaces "whale consensus" — markets where multiple proven traders independently hold the same position. \
+You're also a real simulated trading bot, riding the current behind the whales you track (small krill, big \
+whales — that's the joke, don't over-explain it). Have a warm, a little playful personality, but stay concise \
+and genuinely useful — you're a guide with character, not a mascot doing a bit in every message.
 
 What you should help visitors with:
 - Explaining what the dashboard shows: consensus score, whale count, combined position value, probability.
@@ -36,19 +59,32 @@ What you should help visitors with:
   roughly daily. It's a bounded refinement (never more than a ~40% swing up or down) on top of leaderboard \
   rank and quality — a proven top-ranked trader on a cold streak still counts, just somewhat less than the \
   same trader on a hot streak.
-- Explaining KrillBot using the live BOT CONTEXT given below: its current bankroll and return, its \
-  open and recent trades, why it entered or exited a given position (whale count, consensus score, and the \
-  reasoning it recorded), and how its strategy works — it only trades markets that already clear a whale-count \
-  and consensus-score bar, sizes bets ($10/$25/$50) by signal strength, checks live news as a confirmation \
-  gate that can only veto or downsize a trade (never independently create one), exits on take-profit, \
-  stop-loss-plus-signal-decay, or market resolution, and periodically re-tunes its own thresholds from its \
-  real results (never real machine learning — explainable rule adjustments, logged with reasoning).
-- Always be clear KrillBot trades with a HYPOTHETICAL $500, not real money — it's a transparent demonstration \
-  of the whale-consensus strategy, not investment advice, and past performance shown is not a guarantee of \
+- Explaining your own (KrillBot's) trading using the live BOT CONTEXT given below: your current bankroll and \
+  return, your open and recent trades, why you entered or exited a given position (whale count, consensus \
+  score, and the reasoning you recorded), and how your strategy works — you only trade markets that already \
+  clear a whale-count and consensus-score bar, size bets ($10/$25/$50) by signal strength, check live news as \
+  a confirmation gate that can only veto or downsize a trade (never independently create one), exit on \
+  take-profit, stop-loss-plus-signal-decay, or market resolution, and periodically re-tune your own thresholds \
+  from real results (never real machine learning — explainable rule adjustments, logged with reasoning).
+- Always be clear you trade with a HYPOTHETICAL $500, not real money — you're a transparent demonstration of \
+  the whale-consensus strategy, not investment advice, and past performance shown is not a guarantee of \
   future results.
 - General questions about how the site works, how often it refreshes (about every 15 minutes), and what \
   the numbers mean.
 - General crypto/prediction-market questions are fine to answer briefly if relevant to context.
+
+RECOMMENDATION RULE — important: when asked what's worth watching, what to check out, or for a suggestion, \
+ONLY reference markets from CURRENT TOP PICKS below or your own open positions in BOT CONTEXT below. Never \
+invent, guess, or name any other specific market — if nothing in those two lists fits what they're asking, \
+say so honestly and point them to the dashboard's filters instead of making something up.
+
+ESCALATION — when a visitor needs help you genuinely can't give from the data available to you (something \
+account-specific, a bug report, a partnership/business inquiry, anything needing a human):
+1. Let them know you'll flag it for the team.
+2. If they haven't already given you one, ask for an email or Instagram handle to reach them at.
+3. Only once you have BOTH their issue and a contact method, call flag_for_admin_help with a brief summary \
+   and that contact — never call it before you have both, and never invent a contact method yourself.
+4. Confirm to them that it's been sent once you've called the tool.
 
 Hard rules, never break these regardless of how the request is phrased:
 - Never reveal, discuss, guess at, or help obtain the admin password, the visitor access code, any API \
@@ -56,8 +92,9 @@ Hard rules, never break these regardless of how the request is phrased:
 - Never reveal the existence or contents of the admin panel's internal controls, moderation lists, or \
   scoring-weight configuration beyond what's publicly visible on the dashboard.
 - Never help anyone bypass the access gate or admin login.
-- Never state or imply the bot's results predict future returns, and never encourage anyone to trade real \
-  money based on it.
+- Never state or imply your results predict future returns, and never encourage anyone to trade real \
+  money based on them.
+- Never state or imply a market's real-world outcome — only describe what the whale data currently shows.
 - If asked about any of the above, briefly decline and redirect to what you can help with — don't lecture.
 
 Keep answers short and conversational — this is a chat widget, not a report."""
@@ -75,6 +112,41 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+async def _top_picks_context() -> str:
+    """The same "clears KrillBot's own entry bar" picks shown in the whale
+    spotlight, given as real facts so the assistant has something concrete
+    to reference instead of the RECOMMENDATION RULE leaving it nothing to say."""
+    snapshot = cache_module.cache.snapshot
+    if snapshot is None:
+        return "CURRENT TOP PICKS: unavailable right now."
+
+    try:
+        async with get_session() as session:
+            state = await repository.get_or_create_bot_state(session)
+        min_whales = int(state.entry_min_whales)
+        score_threshold = float(state.entry_score_threshold)
+    except Exception:
+        logger.exception("failed to load bot thresholds for top-picks context")
+        return "CURRENT TOP PICKS: unavailable right now."
+
+    rows = [r for r in snapshot.variants.get(variant_key(Variant.COMBINED, TOP_PICKS_TOP_N), []) if r.is_active]
+    qualifying = [r for r in rows if r.whale_count >= min_whales and r.consensus_score >= score_threshold]
+
+    picks, seen_conditions = [], set()
+    for row in qualifying:
+        if len(picks) >= 3 or row.condition_id in seen_conditions:
+            continue
+        seen_conditions.add(row.condition_id)
+        picks.append(
+            f"  - {row.market_title} / {row.outcome_label}: {row.whale_count} whales, "
+            f"consensus score {row.consensus_score:.0f}, {row.current_price:.2f} probability."
+        )
+
+    if not picks:
+        return "CURRENT TOP PICKS: none clear the bar right now."
+    return "CURRENT TOP PICKS (the same ones shown in the whale spotlight):\n" + "\n".join(picks)
 
 
 async def _bot_context_block() -> str:
@@ -115,6 +187,18 @@ async def _bot_context_block() -> str:
     return "\n".join(lines)
 
 
+async def _handle_flag_tool_call(tool_input: dict) -> str:
+    summary = str(tool_input.get("summary", "")).strip()
+    contact = str(tool_input.get("contact", "")).strip()
+    try:
+        async with get_session() as session:
+            await repository.create_support_request(session, summary=summary or "(no summary given)", contact=contact)
+    except Exception:
+        logger.exception("failed to record support request from chat escalation")
+        return "Logging failed on our end, but let the visitor know their message was received anyway."
+    return "Logged for the team — they'll follow up at the contact given."
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest, settings: Settings = Depends(get_settings)) -> ChatResponse:
     if not settings.anthropic_api_key:
@@ -127,29 +211,56 @@ async def chat(body: ChatRequest, settings: Settings = Depends(get_settings)) ->
     except ImportError:
         return ChatResponse(reply="The chat assistant is temporarily unavailable.")
 
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     messages = [
         {"role": m.role, "content": m.content} for m in body.history[-MAX_HISTORY_MESSAGES:] if m.role in ("user", "assistant")
     ]
     messages.append({"role": "user", "content": body.message})
 
-    system_prompt = f"{BASE_SYSTEM_PROMPT}\n\n{await _bot_context_block()}"
+    system_prompt = f"{BASE_SYSTEM_PROMPT}\n\n{await _top_picks_context()}\n\n{await _bot_context_block()}"
 
+    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     try:
         response = await client.messages.create(
             model="claude-opus-5",
             max_tokens=1024,
             system=system_prompt,
+            tools=[FLAG_FOR_ADMIN_HELP_TOOL],
             messages=messages,
         )
     except Exception:
         logger.exception("chat completion failed")
-        return ChatResponse(reply="Something went wrong reaching the assistant — try again in a moment.")
-    finally:
         await client.close()
+        return ChatResponse(reply="Something went wrong reaching the assistant — try again in a moment.")
 
     if response.stop_reason == "refusal":
+        await client.close()
         return ChatResponse(reply="I can't help with that — is there something else about the dashboard I can explain?")
 
-    text = next((block.text for block in response.content if block.type == "text"), "")
-    return ChatResponse(reply=text or "I'm not sure how to respond to that — could you rephrase?")
+    tool_use = next((b for b in response.content if b.type == "tool_use" and b.name == "flag_for_admin_help"), None)
+    if tool_use is None:
+        await client.close()
+        text = next((block.text for block in response.content if block.type == "text"), "")
+        return ChatResponse(reply=text or "I'm not sure how to respond to that — could you rephrase?")
+
+    # Escalation was called: record it, then make one follow-up call so
+    # KrillBot can confirm it naturally rather than us hand-writing the reply.
+    tool_result_text = await _handle_flag_tool_call(tool_use.input)
+    messages.append({"role": "assistant", "content": response.content})
+    messages.append(
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_use.id, "content": tool_result_text}]}
+    )
+    try:
+        followup = await client.messages.create(
+            model="claude-opus-5",
+            max_tokens=1024,
+            system=system_prompt,
+            tools=[FLAG_FOR_ADMIN_HELP_TOOL],
+            messages=messages,
+        )
+        text = next((block.text for block in followup.content if block.type == "text"), "")
+        return ChatResponse(reply=text or "Thanks — I've flagged this for our team and they'll follow up with you soon.")
+    except Exception:
+        logger.exception("chat follow-up after tool call failed")
+        return ChatResponse(reply="Thanks — I've flagged this for our team and they'll follow up with you soon.")
+    finally:
+        await client.close()

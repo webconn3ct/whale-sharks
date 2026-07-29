@@ -22,6 +22,8 @@ Hard rules:
 a comparison that doesn't exist.
 - If `opposing` is present, explain which side the data favors and the single clearest reason why \
 (whale count, leaderboard rank quality, or score gap — whichever is most lopsided).
+- Describe what the whale data currently shows, never what will happen — this is NOT a prediction of the \
+market's real-world outcome, and must never be phrased as one (no "will win", "is likely to happen", etc.).
 - Output exactly one sentence, no preamble, no quotation marks."""
 
 

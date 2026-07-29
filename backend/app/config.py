@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     # A single trader's position at or above this value triggers an admin
     # "whale alert" notification (see scan_service._record_whale_alerts).
-    whale_alert_threshold: float = 100_000.0
+    whale_alert_threshold: float = 500_000.0
 
     @property
     def cors_origins_list(self) -> list[str]:

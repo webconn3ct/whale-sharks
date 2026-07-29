@@ -38,8 +38,8 @@ def _set_cookie(response: Response, name: str, token: str, max_age_seconds: int,
 @router.post("/unlock")
 async def unlock(body: UnlockRequest, request: Request, response: Response, settings: Settings = Depends(get_settings)):
     async with get_session() as session:
-        config = await repository.get_app_config(session)
-    if config is None or not verify_secret(body.code, config.access_code_hash):
+        code_valid = await repository.verify_any_access_code(session, body.code)
+    if not code_valid:
         raise HTTPException(status_code=401, detail="Incorrect access code")
     token = create_token(settings, role="visitor")
     _set_cookie(response, VISITOR_COOKIE, token, settings.visitor_session_days * 86400, settings)

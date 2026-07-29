@@ -1,12 +1,12 @@
 import { useRef, useState, useEffect } from "react";
 import { sendChatMessage } from "../lib/api";
 import type { ChatMessage } from "../lib/types";
-import { WhaleSharkLogo } from "./WhaleSharkLogo";
+import { KrillIcon } from "./KrillIcon";
 
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "assistant", content: "Hi — I can explain how the dashboard works, what the filters do, or what consensus score means. What do you need?" },
+    { role: "assistant", content: "Hey, I'm KrillBot — ask me about the dashboard, my trades, or what consensus score means. What do you need?" },
   ]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,10 +37,10 @@ export function ChatWidget() {
     return (
       <button
         onClick={() => setOpen(true)}
-        aria-label="Open chat assistant"
+        aria-label="Chat with KrillBot"
         className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-2xl transition-transform hover:scale-105"
       >
-        <WhaleSharkLogo size={28} />
+        <KrillIcon size={28} className="[&_*]:stroke-white [&_circle]:fill-white" />
       </button>
     );
   }
@@ -49,8 +49,8 @@ export function ChatWidget() {
     <div className="fixed bottom-5 right-5 z-40 flex h-[520px] w-[360px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)] shadow-2xl">
       <div className="flex items-center justify-between border-b border-[var(--border-hairline)] px-4 py-3">
         <div className="flex items-center gap-2">
-          <WhaleSharkLogo size={20} />
-          <span className="text-sm font-medium">Whale Sharks Assistant</span>
+          <KrillIcon size={20} />
+          <span className="text-sm font-medium">KrillBot</span>
         </div>
         <button onClick={() => setOpen(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
           ✕

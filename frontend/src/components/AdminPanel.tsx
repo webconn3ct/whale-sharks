@@ -2,18 +2,22 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   acknowledgeAllWhaleAlerts,
+  acknowledgeSupportRequest,
   acknowledgeWhaleAlert,
   adminLogout,
-  changeAccessCode,
   changeAdminPassword,
+  createAccessCode,
   excludeMarket,
   excludeTrader,
+  fetchAccessCodes,
   fetchAdminScans,
   fetchExcludedMarkets,
   fetchExcludedTraders,
   fetchLoginStats,
   fetchScoringWeights,
+  fetchSupportRequests,
   fetchWhaleAlerts,
+  revokeAccessCode,
   triggerRescan,
   unexcludeMarket,
   unexcludeTrader,
@@ -129,7 +133,7 @@ function LoginStatsSection() {
   );
 }
 
-function NotificationsSection() {
+function WhaleAlertsList() {
   const qc = useQueryClient();
   const alertsQuery = useQuery({ queryKey: ["admin", "whale-alerts"], queryFn: fetchWhaleAlerts, refetchInterval: 30_000 });
   const ackMutation = useMutation({
@@ -145,11 +149,11 @@ function NotificationsSection() {
   const unread = alerts.filter((a) => !a.acknowledged).length;
 
   return (
-    <Section title="Notifications — large single-whale trades ($100k+)">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-sm text-[var(--text-secondary)]">
-          {unread > 0 ? `${unread} unread` : "All caught up."}
-        </p>
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-medium text-[var(--text-secondary)]">
+          Whale trades ($500k+) {unread > 0 && <span className="text-[var(--accent)]">· {unread} unread</span>}
+        </h3>
         {unread > 0 && (
           <button
             onClick={() => ackAllMutation.mutate()}
@@ -189,6 +193,69 @@ function NotificationsSection() {
         ))}
         {alerts.length === 0 && <li className="text-sm text-[var(--text-muted)]">No large trades flagged yet.</li>}
       </ul>
+    </div>
+  );
+}
+
+function SupportRequestsList() {
+  const qc = useQueryClient();
+  const requestsQuery = useQuery({
+    queryKey: ["admin", "support-requests"],
+    queryFn: fetchSupportRequests,
+    refetchInterval: 30_000,
+  });
+  const ackMutation = useMutation({
+    mutationFn: acknowledgeSupportRequest,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "support-requests"] }),
+  });
+
+  const requests = requestsQuery.data ?? [];
+  const unread = requests.filter((r) => !r.acknowledged).length;
+
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-medium text-[var(--text-secondary)]">
+        KrillBot escalations {unread > 0 && <span className="text-[var(--accent)]">· {unread} unread</span>}
+      </h3>
+      <ul className="space-y-2">
+        {requests.map((r) => (
+          <li
+            key={r.id}
+            className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm ${
+              r.acknowledged ? "border-[var(--border-hairline)]" : "border-[var(--accent)] bg-[var(--bg-page)]"
+            }`}
+          >
+            <div className="min-w-0">
+              <div className="truncate font-medium text-[var(--text-primary)]" title={r.summary}>
+                {r.summary}
+              </div>
+              <div className="text-xs text-[var(--text-muted)]">
+                Contact: {r.contact} · {formatRelativeTime(r.created_at)}
+              </div>
+            </div>
+            {!r.acknowledged && (
+              <button
+                onClick={() => ackMutation.mutate(r.id)}
+                className="shrink-0 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+              >
+                Dismiss
+              </button>
+            )}
+          </li>
+        ))}
+        {requests.length === 0 && <li className="text-sm text-[var(--text-muted)]">No escalations from KrillBot yet.</li>}
+      </ul>
+    </div>
+  );
+}
+
+function NotificationsSection() {
+  return (
+    <Section title="Notifications">
+      <div className="flex flex-col gap-5">
+        <SupportRequestsList />
+        <WhaleAlertsList />
+      </div>
     </Section>
   );
 }
@@ -359,10 +426,76 @@ function ModerationSection() {
   );
 }
 
+function AccessCodesLog() {
+  const qc = useQueryClient();
+  const codesQuery = useQuery({ queryKey: ["admin", "access-codes"], queryFn: fetchAccessCodes });
+  const [name, setName] = useState("");
+  const [code, setCode] = useState("");
+
+  const createMutation = useMutation({
+    mutationFn: () => createAccessCode(name.trim(), code.trim()),
+    onSuccess: () => {
+      setName("");
+      setCode("");
+      qc.invalidateQueries({ queryKey: ["admin", "access-codes"] });
+    },
+  });
+  const revokeMutation = useMutation({
+    mutationFn: (id: number) => revokeAccessCode(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "access-codes"] }),
+  });
+
+  const codes = codesQuery.data ?? [];
+
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="text-sm text-[var(--text-secondary)]">Create a new visitor access code</label>
+      <p className="text-xs text-[var(--text-muted)]">
+        Every active code works to unlock the dashboard — this adds a new one, it doesn't replace existing codes.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <input placeholder="name (e.g. reddit promo)" className={inputClass + " w-40"} value={name} onChange={(e) => setName(e.target.value)} />
+        <input placeholder="code" className={inputClass + " flex-1 min-w-0"} value={code} onChange={(e) => setCode(e.target.value)} />
+        <button
+          onClick={() => createMutation.mutate()}
+          disabled={!name.trim() || code.trim().length < 4 || createMutation.isPending}
+          className={buttonClass}
+        >
+          Create
+        </button>
+      </div>
+      {createMutation.isSuccess && <p className="text-sm text-[var(--good)]">Code created.</p>}
+
+      <ul className="mt-3 space-y-1 text-sm">
+        {codes.map((c) => (
+          <li
+            key={c.id}
+            className="flex items-center justify-between gap-2 rounded border border-[var(--border-hairline)] px-2 py-1.5"
+          >
+            <div className="min-w-0">
+              <span className={c.active ? "text-[var(--text-primary)]" : "text-[var(--text-muted)] line-through"}>
+                {c.name}
+              </span>
+              <span className="ml-2 text-xs text-[var(--text-muted)]">{formatRelativeTime(c.created_at)}</span>
+            </div>
+            {c.active && (
+              <button
+                onClick={() => revokeMutation.mutate(c.id)}
+                className="shrink-0 text-xs text-[var(--critical)] hover:underline"
+              >
+                Revoke
+              </button>
+            )}
+          </li>
+        ))}
+        {codes.length === 0 && <li className="text-[var(--text-muted)]">No codes yet.</li>}
+      </ul>
+    </div>
+  );
+}
+
 function AccessManagement({ onLoggedOut }: { onLoggedOut: () => void }) {
-  const [newCode, setNewCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const codeMutation = useMutation({ mutationFn: () => changeAccessCode(newCode.trim()), onSuccess: () => setNewCode("") });
   const passwordMutation = useMutation({
     mutationFn: () => changeAdminPassword(newPassword.trim()),
     onSuccess: () => setNewPassword(""),
@@ -374,21 +507,8 @@ function AccessManagement({ onLoggedOut }: { onLoggedOut: () => void }) {
 
   return (
     <Section title="Access management">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="flex flex-col gap-2">
-          <label className="text-sm text-[var(--text-secondary)]">New visitor access code</label>
-          <div className="flex gap-2">
-            <input className={inputClass + " flex-1"} value={newCode} onChange={(e) => setNewCode(e.target.value)} />
-            <button
-              onClick={() => codeMutation.mutate()}
-              disabled={newCode.trim().length < 4 || codeMutation.isPending}
-              className={buttonClass}
-            >
-              Update
-            </button>
-          </div>
-          {codeMutation.isSuccess && <p className="text-sm text-[var(--good)]">Access code updated.</p>}
-        </div>
+      <div className="grid gap-6 md:grid-cols-2">
+        <AccessCodesLog />
         <div className="flex flex-col gap-2">
           <label className="text-sm text-[var(--text-secondary)]">New admin password</label>
           <div className="flex gap-2">

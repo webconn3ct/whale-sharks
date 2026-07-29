@@ -5,6 +5,8 @@ from app.api.schemas import ConsensusSnapshot, HighlightsOut, MatchupOut, TopPic
 from app.config import Settings, get_settings
 from app.core.consensus_engine import Variant
 from app.core.recommendation import compute_lean_facts, get_reasoning
+from app.db import repository
+from app.db.session import get_session
 
 router = APIRouter(dependencies=[Depends(require_visitor)])
 
@@ -14,8 +16,13 @@ _TIMEFRAME_VARIANTS = [Variant.DAY, Variant.WEEK, Variant.MONTH, Variant.ALL_TIM
 
 
 async def _build_top_picks(
-    combined_rows: list, settings: Settings, scan_id: int
+    combined_rows: list, settings: Settings, scan_id: int, min_whales: int, score_threshold: float
 ) -> list[TopPickOut]:
+    # Top picks are markets that actually clear KrillBot's own entry bar —
+    # not an independently-tuned "best of" cut — so the spotlight genuinely
+    # reflects what the bot is trading on, not a separate editorial pick.
+    qualifying_rows = [r for r in combined_rows if r.whale_count >= min_whales and r.consensus_score >= score_threshold]
+
     by_condition: dict[str, list] = {}
     for r in combined_rows:
         by_condition.setdefault(r.condition_id, []).append(r)
@@ -23,7 +30,7 @@ async def _build_top_picks(
     picks: list[TopPickOut] = []
     used_conditions: set[str] = set()
 
-    for row in combined_rows:
+    for row in qualifying_rows:
         if len(picks) >= 3:
             break
         if row.condition_id in used_conditions:
@@ -56,7 +63,12 @@ async def get_highlights(
 ) -> HighlightsOut:
     combined_rows = [r for r in snapshot.variants.get(variant_key(Variant.COMBINED, DEFAULT_TOP_N), []) if r.is_active]
 
-    top_picks = await _build_top_picks(combined_rows, settings, snapshot.scan_id)
+    async with get_session() as session:
+        bot_state = await repository.get_or_create_bot_state(session)
+
+    top_picks = await _build_top_picks(
+        combined_rows, settings, snapshot.scan_id, int(bot_state.entry_min_whales), float(bot_state.entry_score_threshold)
+    )
     most_volume = max(combined_rows, key=lambda r: r.combined_value, default=None)
 
     by_timeframe = {}

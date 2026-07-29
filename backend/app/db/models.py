@@ -169,16 +169,45 @@ class ConsensusPositionTrader(Base):
 
 class AppConfig(Base):
     """Singleton row (id always 1) holding mutable site config editable from
-    the admin panel — access/admin credentials and tunable scoring weights."""
+    the admin panel — the admin credential and tunable scoring weights. The
+    visitor access code used to live here as a single hash; it's now the
+    `access_codes` table below, since multiple named codes can be active
+    at once."""
 
     __tablename__ = "app_config"
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
-    access_code_hash: Mapped[str] = mapped_column(Text)
     admin_password_hash: Mapped[str] = mapped_column(Text)
     value_normalizer: Mapped[float] = mapped_column(Numeric(6, 3), default=6.0)
     max_value_boost: Mapped[float] = mapped_column(Numeric(6, 3), default=1.0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AccessCode(Base):
+    """A named visitor access code. Multiple can be active at once (e.g. one
+    per promo/audience) — /auth/unlock accepts any active code. Revoking sets
+    active=False rather than deleting, so the log stays intact."""
+
+    __tablename__ = "access_codes"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100))
+    code_hash: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class SupportRequest(Base):
+    """A chat conversation KrillBot escalated to a human — surfaced in the
+    admin notifications feed alongside whale-trade alerts."""
+
+    __tablename__ = "support_requests"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    summary: Mapped[str] = mapped_column(Text)
+    contact: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ExcludedMarket(Base):

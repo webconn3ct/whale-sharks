@@ -1,16 +1,18 @@
 import { useState } from "react";
 import type { ConsensusRowOut, HighlightsOut, MatchupOut, TopPickOut, Variant } from "../lib/types";
-import { formatCompactCurrency, formatProbability, TIMEFRAME_LABEL } from "../lib/format";
+import { formatCompactCurrency, formatProbability } from "../lib/format";
 
 type SelectFn = (row: ConsensusRowOut, timeframe: Variant, topN: number) => void;
 
 // Only today's pick joins the top-picks/most-volume cards here — Weekly,
 // Monthly, and All-Time are still filterable via the timeframe dropdown below.
-const TIMEFRAME_KEYS: { key: Variant; label: string }[] = [{ key: "day", label: TIMEFRAME_LABEL.DAY }];
+const TIMEFRAME_KEYS: { key: Variant; label: string }[] = [{ key: "day", label: "Daily Catch" }];
 const HIGHLIGHTS_TOP_N = 25;
 
-// All 5 highlight boxes share one footprint so the strip reads as a uniform row.
-const CARD_SIZE = "w-64 shrink-0 min-h-[112px]";
+// All highlight boxes are grid cells, not fixed-width flex items, so they
+// stay evenly sized whether there are 3 top picks or 5 (grid col count
+// steps down on narrower screens instead of any box changing width).
+const CARD_SIZE = "w-full min-h-[112px]";
 
 function HighlightCard({
   eyebrow,
@@ -102,23 +104,22 @@ function MatchupCard({
           onSelect={() => onSelect(matchup.other, "combined", HIGHLIGHTS_TOP_N)}
         />
       </div>
-      {showReasoning ? (
+      {showReasoning && (
         <p className="text-xs leading-relaxed text-[var(--text-secondary)]">{matchup.reasoning}</p>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setShowReasoning(true)}
-          className="text-left text-xs text-[var(--text-muted)] underline decoration-dotted underline-offset-2 hover:text-[var(--text-secondary)]"
-        >
-          Why this pick?
-        </button>
       )}
+      <button
+        type="button"
+        onClick={() => setShowReasoning((v) => !v)}
+        className="text-left text-xs text-[var(--text-muted)] underline decoration-dotted underline-offset-2 hover:text-[var(--text-secondary)]"
+      >
+        {showReasoning ? "Hide reasoning" : "Why this pick?"}
+      </button>
     </div>
   );
 }
 
 function TopPickCard({ pick, index, onSelect }: { pick: TopPickOut; index: number; onSelect: SelectFn }) {
-  const eyebrow = `Top pick #${index + 1}`;
+  const eyebrow = `KrillBot pick #${index + 1}`;
   if (pick.kind === "matchup" && pick.matchup) {
     return <MatchupCard eyebrow={eyebrow} matchup={pick.matchup} onSelect={onSelect} />;
   }
@@ -139,7 +140,7 @@ export function HighlightsStrip({
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
         Whale spotlight
       </h2>
-      <div className="flex flex-wrap gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
         {highlights.top_picks.map((pick, i) => (
           <TopPickCard key={i} pick={pick} index={i} onSelect={onSelect} />
         ))}
