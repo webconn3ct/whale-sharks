@@ -15,12 +15,17 @@ router = APIRouter(dependencies=[Depends(require_visitor)])
 DEFAULT_TOP_N = 25
 _TIMEFRAME_VARIANTS = [Variant.WEEK, Variant.MONTH, Variant.ALL_TIME]
 
-# The "Markets" spotlight slots deliberately stay off politics — it's the
-# single biggest category by volume and would otherwise crowd out every
-# slot. Real category tags observed in production (see `markets.category`):
-# the flat "Politics" bucket plus more specific election/office tags that
-# don't roll up into it.
-_EXCLUDED_TOP_PICK_KEYWORDS = ("politic", "election", "midterm", "primaries", "president", "congress", "senate", "governor")
+# Every whale-spotlight slot (all 5 boxes, not just the 3 "Markets" cards)
+# deliberately stays off politics/geopolitics — it's the single biggest
+# category by volume and would otherwise crowd out every slot. Still fully
+# visible/searchable in the main table — this only affects the spotlight.
+# Real category tags observed in production (see `markets.category`): the
+# flat "Politics" bucket plus more specific election/office/geopolitical
+# tags that don't roll up into it.
+_EXCLUDED_TOP_PICK_KEYWORDS = (
+    "politic", "election", "midterm", "primaries", "president", "congress", "senate", "governor",
+    "united states", "military", "nato", "geopolitic",
+)
 
 
 def _is_political(category: str | None) -> bool:
@@ -89,7 +94,10 @@ async def _get_daily_catch(snapshot: ConsensusSnapshot):
         pick = await repository.get_daily_catch_pick(session, today)
 
         if pick is None:
-            day_rows = [r for r in snapshot.variants.get(variant_key(Variant.DAY, DEFAULT_TOP_N), []) if r.is_active]
+            day_rows = [
+                r for r in snapshot.variants.get(variant_key(Variant.DAY, DEFAULT_TOP_N), [])
+                if r.is_active and not _is_political(r.category)
+            ]
             if not day_rows:
                 return None  # nothing to pick yet today — frontend shows a loading state
             best = max(day_rows, key=lambda r: r.consensus_score)
@@ -114,7 +122,8 @@ async def get_highlights(
     widest_rows = [r for r in snapshot.variants.get(variant_key(Variant.COMBINED, CANONICAL_TOP_N), []) if r.is_active]
 
     top_picks = await _build_top_picks(widest_rows, settings, snapshot.scan_id)
-    most_volume = max(combined_rows, key=lambda r: r.combined_value, default=None)
+    non_political_rows = [r for r in combined_rows if not _is_political(r.category)]
+    most_volume = max(non_political_rows, key=lambda r: r.combined_value, default=None)
 
     by_timeframe = {Variant.DAY.value: await _get_daily_catch(snapshot)}
     for variant in _TIMEFRAME_VARIANTS:

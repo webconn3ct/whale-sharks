@@ -39,6 +39,10 @@ RECALIBRATION_LOOKBACK = 30
 # New entries require the snapshot to be this fresh — protects against
 # opening a position on a line that's since moved.
 ENTRY_MAX_STALENESS = timedelta(minutes=5)
+# How long past a market's scheduled end_date to wait before treating it as
+# resolved even if Gamma's `active` flag hasn't caught up yet — long enough
+# that a delayed/extended real event doesn't get closed out prematurely.
+RESOLUTION_GRACE_PERIOD = timedelta(hours=4)
 
 
 async def run_bot_cycle(snapshot: ConsensusSnapshot, settings: Settings) -> None:
@@ -95,6 +99,14 @@ async def _process_exits(
         shares = float(position.shares)
         entry_whale_count = position.entry_whale_count
 
+        # A market's `active` flag comes from Gamma metadata, refreshed on a
+        # TTL (up to market_metadata_ttl_hours) — for a sports market that
+        # can resolve in a couple of hours, that flag can lag well behind
+        # reality, leaving the bot holding a position that's actually over.
+        # Once its scheduled end_date is more than a few hours in the past,
+        # treat it as resolved too rather than wait for metadata to catch up.
+        past_scheduled_end = row is not None and row.end_date is not None and row.end_date < datetime.now(UTC) - RESOLUTION_GRACE_PERIOD
+
         if row is None:
             # Every tracked whale has exited this position — we've lost the
             # thesis and can't mark-to-market. Close flat rather than hold
@@ -102,7 +114,7 @@ async def _process_exits(
             exit_price = float(position.entry_price)
             realized_pnl = 0.0
             reason = BotExitReason.SIGNAL_LOST
-        elif not row.is_active:
+        elif not row.is_active or past_scheduled_end:
             # Resolved markets pay out exactly $1 or $0 per share — never a
             # fraction. `current_price` here is just whatever was last
             # scraped (up to one scan cycle stale) and isn't guaranteed to
