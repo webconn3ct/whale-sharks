@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from app.config import Settings
+from app.core import bot_service
 from app.core import cache as cache_module
 from app.core.consensus_engine import (
     CANONICAL_TOP_N,
@@ -125,6 +126,9 @@ async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
         snapshot = await repository.load_latest_snapshot(session)
     if snapshot is not None:
         cache_module.cache.refresh(snapshot)
+        # Runs against the fresh snapshot in its own session/try-except — a
+        # bot failure must never break the real scan (see run_bot_cycle).
+        await bot_service.run_bot_cycle(snapshot, settings)
 
     logger.info(
         "scan %s completed: %d traders, %d positions, %d combined/top%d consensus groups, "

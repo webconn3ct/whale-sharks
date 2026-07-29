@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchAuthStatus,
+  fetchBotPositions,
+  fetchBotState,
   fetchCategories,
   fetchConsensus,
   fetchConsensusLean,
@@ -66,6 +68,24 @@ export function useConsensusLean(rowId: string | null, timeframe: string, topN: 
     queryFn: () => fetchConsensusLean(rowId as string, timeframe, topN),
     enabled: rowId !== null,
     staleTime: CONSENSUS_POLL_MS,
+    retry: shouldRetry,
+  });
+}
+
+export function useBotState() {
+  return useQuery({
+    queryKey: ["bot-state"],
+    queryFn: fetchBotState,
+    refetchInterval: CONSENSUS_POLL_MS,
+    retry: shouldRetry,
+  });
+}
+
+export function useBotPositions(status: "open" | "closed" | "all" = "all") {
+  return useQuery({
+    queryKey: ["bot-positions", status],
+    queryFn: () => fetchBotPositions(status),
+    refetchInterval: CONSENSUS_POLL_MS,
     retry: shouldRetry,
   });
 }

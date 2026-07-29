@@ -133,3 +133,37 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+export interface BotStateOut {
+  cash_balance: number;
+  starting_balance: number;
+  open_positions_value: number;
+  total_value: number;
+  percent_return: number;
+  open_positions_count: number;
+  entry_min_whales: number;
+  entry_score_threshold: number;
+  last_recalibrated_at: string | null;
+}
+
+export interface BotPositionOut {
+  id: number;
+  condition_id: string;
+  outcome_index: number;
+  outcome_label: string;
+  market_title: string;
+  category: string | null;
+  status: "open" | "closed";
+  stake: number;
+  shares: number;
+  entry_price: number;
+  entry_at: string;
+  entry_consensus_score: number;
+  entry_whale_count: number;
+  entry_reasoning: string | null;
+  current_price: number | null;
+  exit_price: number | null;
+  exit_at: string | null;
+  exit_reason: string | null;
+  realized_pnl: number | null;
+}

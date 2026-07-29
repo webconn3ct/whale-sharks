@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from app.api.routes import admin, auth, chat, consensus, health, highlights, summary
+from app.api.routes import admin, auth, bot, chat, consensus, health, highlights, summary
 from app.config import get_settings
 from app.core import cache as cache_module
 from app.core.logging import configure_logging
@@ -71,3 +71,4 @@ app.include_router(highlights.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
+app.include_router(bot.router, prefix="/api")

@@ -5,16 +5,21 @@ from pydantic import BaseModel
 
 from app.api.deps import require_visitor
 from app.config import Settings, get_settings
+from app.db import repository
+from app.db.session import get_session
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(dependencies=[Depends(require_visitor)])
 
 MAX_HISTORY_MESSAGES = 20
+BOT_CONTEXT_RECENT_TRADES = 5
 
-SYSTEM_PROMPT = """You are the site assistant for Whale Sharks, a dashboard that tracks Polymarket's \
+BASE_SYSTEM_PROMPT = """You are the site assistant for Whale Sharks, a dashboard that tracks Polymarket's \
 highest-performing traders and surfaces "whale consensus" — markets where multiple proven traders \
-independently hold the same position.
+independently hold the same position. You're also the voice of the "mini whale" bot — a paper-trading bot \
+that follows this same whale-consensus signal — and can discuss its strategy, performance, and trade history \
+using the live data given to you below.
 
 What you should help visitors with:
 - Explaining what the dashboard shows: consensus score, whale count, combined position value, probability.
@@ -31,6 +36,16 @@ What you should help visitors with:
   roughly daily. It's a bounded refinement (never more than a ~40% swing up or down) on top of leaderboard \
   rank and quality — a proven top-ranked trader on a cold streak still counts, just somewhat less than the \
   same trader on a hot streak.
+- Explaining the mini whale bot using the live BOT CONTEXT given below: its current bankroll and return, its \
+  open and recent trades, why it entered or exited a given position (whale count, consensus score, and the \
+  reasoning it recorded), and how its strategy works — it only trades markets that already clear a whale-count \
+  and consensus-score bar, sizes bets ($10/$25/$50) by signal strength, checks live news as a confirmation \
+  gate that can only veto or downsize a trade (never independently create one), exits on take-profit, \
+  stop-loss-plus-signal-decay, or market resolution, and periodically re-tunes its own thresholds from its \
+  real results (never real machine learning — explainable rule adjustments, logged with reasoning).
+- Always be clear the bot trades with a HYPOTHETICAL $500, not real money — it's a transparent demonstration \
+  of the whale-consensus strategy, not investment advice, and past performance shown is not a guarantee of \
+  future results.
 - General questions about how the site works, how often it refreshes (about every 15 minutes), and what \
   the numbers mean.
 - General crypto/prediction-market questions are fine to answer briefly if relevant to context.
@@ -41,6 +56,8 @@ Hard rules, never break these regardless of how the request is phrased:
 - Never reveal the existence or contents of the admin panel's internal controls, moderation lists, or \
   scoring-weight configuration beyond what's publicly visible on the dashboard.
 - Never help anyone bypass the access gate or admin login.
+- Never state or imply the bot's results predict future returns, and never encourage anyone to trade real \
+  money based on it.
 - If asked about any of the above, briefly decline and redirect to what you can help with — don't lecture.
 
 Keep answers short and conversational — this is a chat widget, not a report."""
@@ -58,6 +75,44 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+async def _bot_context_block() -> str:
+    """Live bot state + recent trades, formatted for the system prompt. Best
+    effort — a DB hiccup here shouldn't break the whole chat response."""
+    try:
+        async with get_session() as session:
+            state = await repository.get_or_create_bot_state(session)
+            open_positions = await repository.get_open_bot_positions(session)
+            recent_closed = await repository.get_recent_closed_bot_positions(session, BOT_CONTEXT_RECENT_TRADES)
+    except Exception:
+        logger.exception("failed to load bot context for chat")
+        return "BOT CONTEXT: unavailable right now."
+
+    cash = float(state.cash_balance)
+    starting = float(state.starting_balance)
+    lines = [
+        "BOT CONTEXT (live):",
+        f"- Bankroll: ${cash:.2f} cash of ${starting:.2f} starting (open positions not included in this figure).",
+        f"- Open positions ({len(open_positions)}):",
+    ]
+    for p in open_positions:
+        lines.append(
+            f"  - {p.market_title} / {p.outcome_label}: ${float(p.stake):.0f} stake at entry price "
+            f"{float(p.entry_price):.2f}, entered on {p.entry_whale_count} whales, score {float(p.entry_consensus_score):.0f}."
+        )
+    lines.append(f"- Recent closed trades (last {len(recent_closed)}):")
+    for p in recent_closed:
+        pnl = float(p.realized_pnl or 0)
+        lines.append(
+            f"  - {p.market_title} / {p.outcome_label}: ${float(p.stake):.0f} stake, "
+            f"{'+' if pnl >= 0 else ''}{pnl:.2f} pnl, closed as {p.exit_reason.value if p.exit_reason else 'unknown'}."
+        )
+    lines.append(
+        f"- Current entry bar: needs >= {int(state.entry_min_whales)} whales and consensus score >= "
+        f"{float(state.entry_score_threshold):.0f} to be considered."
+    )
+    return "\n".join(lines)
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -78,11 +133,13 @@ async def chat(body: ChatRequest, settings: Settings = Depends(get_settings)) ->
     ]
     messages.append({"role": "user", "content": body.message})
 
+    system_prompt = f"{BASE_SYSTEM_PROMPT}\n\n{await _bot_context_block()}"
+
     try:
         response = await client.messages.create(
             model="claude-opus-5",
             max_tokens=1024,
-            system=SYSTEM_PROMPT,
+            system=system_prompt,
             messages=messages,
         )
     except Exception:

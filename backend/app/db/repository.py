@@ -20,6 +20,11 @@ from app.core.consensus_engine import (
 )
 from app.db.models import (
     AppConfig,
+    BotExitReason,
+    BotPosition,
+    BotPositionStatus,
+    BotRecalibration,
+    BotState,
     ConsensusPosition,
     ConsensusPositionTrader,
     ExcludedMarket,
@@ -554,3 +559,90 @@ def parse_market_date(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+# --- mini whale bot ---------------------------------------------------------
+
+
+async def get_or_create_bot_state(session: AsyncSession) -> BotState:
+    result = await session.execute(select(BotState).where(BotState.id == 1))
+    state = result.scalar_one_or_none()
+    if state is None:
+        state = BotState(id=1, updated_at=datetime.now(UTC))
+        session.add(state)
+        await session.flush()
+    return state
+
+
+async def update_bot_state(session: AsyncSession, **fields) -> None:
+    if not fields:
+        return
+    fields["updated_at"] = datetime.now(UTC)
+    await session.execute(BotState.__table__.update().where(BotState.id == 1).values(**fields))
+
+
+async def get_open_bot_positions(session: AsyncSession) -> list[BotPosition]:
+    result = await session.execute(select(BotPosition).where(BotPosition.status == BotPositionStatus.OPEN))
+    return list(result.scalars().all())
+
+
+async def create_bot_position(session: AsyncSession, **fields) -> BotPosition:
+    position = BotPosition(status=BotPositionStatus.OPEN, **fields)
+    session.add(position)
+    await session.flush()
+    return position
+
+
+async def close_bot_position(
+    session: AsyncSession,
+    position_id: int,
+    exit_price: float,
+    exit_reason: BotExitReason,
+    realized_pnl: float,
+) -> None:
+    await session.execute(
+        BotPosition.__table__.update()
+        .where(BotPosition.id == position_id)
+        .values(
+            status=BotPositionStatus.CLOSED,
+            exit_price=exit_price,
+            exit_at=datetime.now(UTC),
+            exit_reason=exit_reason,
+            realized_pnl=realized_pnl,
+        )
+    )
+
+
+async def get_recent_closed_bot_positions(session: AsyncSession, limit: int) -> list[BotPosition]:
+    result = await session.execute(
+        select(BotPosition)
+        .where(BotPosition.status == BotPositionStatus.CLOSED)
+        .order_by(BotPosition.exit_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def list_bot_positions(session: AsyncSession, status: str | None, limit: int) -> list[BotPosition]:
+    query = select(BotPosition).order_by(BotPosition.entry_at.desc()).limit(limit)
+    if status == "open":
+        query = query.where(BotPosition.status == BotPositionStatus.OPEN)
+    elif status == "closed":
+        query = query.where(BotPosition.status == BotPositionStatus.CLOSED)
+    result = await session.execute(query)
+    return list(result.scalars().all())
+
+
+async def insert_bot_recalibration(
+    session: AsyncSession, reasoning: str, old_thresholds: dict, new_thresholds: dict
+) -> None:
+    session.add(
+        BotRecalibration(
+            at=datetime.now(UTC), reasoning=reasoning, old_thresholds=old_thresholds, new_thresholds=new_thresholds
+        )
+    )
+
+
+async def list_bot_recalibrations(session: AsyncSession, limit: int = 20) -> list[BotRecalibration]:
+    result = await session.execute(select(BotRecalibration).order_by(BotRecalibration.id.desc()).limit(limit))
+    return list(result.scalars().all())

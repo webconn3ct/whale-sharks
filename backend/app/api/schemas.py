@@ -125,3 +125,44 @@ class ConsensusSnapshot(BaseModel):
                 if row.category and row.is_active:
                     cats.add(row.category)
         return sorted(cats)
+
+
+class BotPositionOut(BaseModel):
+    id: int
+    condition_id: str
+    outcome_index: int
+    outcome_label: str
+    market_title: str
+    category: str | None
+    status: str
+    stake: float
+    shares: float
+    entry_price: float
+    entry_at: datetime
+    entry_consensus_score: float
+    entry_whale_count: int
+    entry_reasoning: str | None
+    current_price: float | None = None  # mark-to-market, open positions only
+    exit_price: float | None = None
+    exit_at: datetime | None = None
+    exit_reason: str | None = None
+    realized_pnl: float | None = None
+
+
+class BotStateOut(BaseModel):
+    cash_balance: float
+    starting_balance: float
+    open_positions_value: float
+    total_value: float
+    percent_return: float
+    open_positions_count: int
+    entry_min_whales: int
+    entry_score_threshold: float
+    last_recalibrated_at: datetime | None
+
+
+class BotRecalibrationOut(BaseModel):
+    at: datetime
+    reasoning: str
+    old_thresholds: dict
+    new_thresholds: dict

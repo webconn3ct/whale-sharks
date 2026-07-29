@@ -2,6 +2,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     DateTime,
@@ -198,3 +199,89 @@ class ExcludedTrader(Base):
     wallet_address: Mapped[str] = mapped_column(String(42), primary_key=True)
     reason: Mapped[str | None] = mapped_column(Text)
     excluded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BotPositionStatus(str, enum.Enum):
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+class BotExitReason(str, enum.Enum):
+    TAKE_PROFIT = "take_profit"
+    STOP_LOSS = "stop_loss"
+    SIGNAL_LOST = "signal_lost"  # position vanished from all consensus data
+    MARKET_RESOLVED = "market_resolved"  # end_date passed / market went inactive
+
+
+class BotState(Base):
+    """Singleton row (id always 1) — the mini whale bot's bankroll and its
+    own tunable decision thresholds, adjusted by the recalibration loop
+    based on its real trade results (see app/core/bot_service.py)."""
+
+    __tablename__ = "bot_state"
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, default=1)
+    cash_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=500)
+    starting_balance: Mapped[float] = mapped_column(Numeric(12, 2), default=500)
+
+    # Entry gating
+    entry_min_whales: Mapped[int] = mapped_column(SmallInteger, default=3)
+    entry_score_threshold: Mapped[float] = mapped_column(Numeric(10, 2), default=250.0)
+    # Position-sizing tiers: consensus_score needed to earn each stake size.
+    medium_bet_score: Mapped[float] = mapped_column(Numeric(10, 2), default=450.0)
+    large_bet_score: Mapped[float] = mapped_column(Numeric(10, 2), default=800.0)
+
+    # Exit gating
+    take_profit_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=0.40)
+    stop_loss_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=0.35)
+    # Fraction of entry whale_count a position can drop to before its signal
+    # counts as "decayed" for stop-loss purposes.
+    signal_decay_fraction: Mapped[float] = mapped_column(Numeric(4, 3), default=0.5)
+
+    trades_since_recalibration: Mapped[int] = mapped_column(default=0)
+    last_recalibrated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BotPosition(Base):
+    """One simulated (paper) trade — open or settled. Market title/outcome
+    are denormalized at entry time so history reads correctly even after the
+    underlying scan data that originally surfaced the opportunity ages out."""
+
+    __tablename__ = "bot_positions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    condition_id: Mapped[str] = mapped_column(String(66), index=True)
+    outcome_index: Mapped[int] = mapped_column(SmallInteger)
+    outcome_label: Mapped[str] = mapped_column(String(100))
+    market_title: Mapped[str] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(String(100))
+
+    status: Mapped[BotPositionStatus] = mapped_column(pg_enum(BotPositionStatus, "bot_position_status"), index=True)
+    stake: Mapped[float] = mapped_column(Numeric(6, 2))
+    shares: Mapped[float] = mapped_column(Numeric(18, 6))
+
+    entry_price: Mapped[float] = mapped_column(Numeric(9, 6))
+    entry_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    entry_consensus_score: Mapped[float] = mapped_column(Numeric(18, 6))
+    entry_whale_count: Mapped[int] = mapped_column()
+    entry_reasoning: Mapped[str | None] = mapped_column(Text)  # news-research gate note, if any
+
+    exit_price: Mapped[float | None] = mapped_column(Numeric(9, 6))
+    exit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    exit_reason: Mapped[BotExitReason | None] = mapped_column(pg_enum(BotExitReason, "bot_exit_reason"))
+    realized_pnl: Mapped[float | None] = mapped_column(Numeric(10, 2))
+
+
+class BotRecalibration(Base):
+    """Audit log of every threshold adjustment the bot's recalibration loop
+    makes, with the reasoning — so the strategy stays explainable, not a
+    black box."""
+
+    __tablename__ = "bot_recalibrations"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reasoning: Mapped[str] = mapped_column(Text)
+    old_thresholds: Mapped[dict] = mapped_column(JSON)
+    new_thresholds: Mapped[dict] = mapped_column(JSON)

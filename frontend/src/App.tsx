@@ -6,6 +6,7 @@ import { ConsensusTable } from "./components/ConsensusTable";
 import { PageControl } from "./components/PageControl";
 import { MarketDetailDrawer } from "./components/MarketDetailDrawer";
 import { HighlightsStrip } from "./components/HighlightsStrip";
+import { BotSection } from "./components/BotSection";
 import { AccessGate } from "./components/AccessGate";
 import { AdminLogin } from "./components/AdminLogin";
 import { AdminPanel } from "./components/AdminPanel";
@@ -95,6 +96,8 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
             highlights={highlightsQuery.data}
             onSelect={(row, timeframe, topN) => setSelectedRow({ row, timeframe, topN })}
           />
+
+          <BotSection />
 
           <div className="mb-4">
             <FiltersBar filters={filters} onChange={handleFiltersChange} categories={categoriesQuery.data ?? []} />

@@ -1,5 +1,7 @@
 import type {
   AuthStatusOut,
+  BotPositionOut,
+  BotStateOut,
   ChatMessage,
   ConsensusFilters,
   ExcludedMarketOut,
@@ -168,6 +170,16 @@ export function changeAccessCode(newCode: string): Promise<{ ok: boolean }> {
 
 export function changeAdminPassword(newPassword: string): Promise<{ ok: boolean }> {
   return postJson("/api/admin/admin-password", { new_password: newPassword });
+}
+
+// ---- mini whale bot ------------------------------------------------------
+
+export function fetchBotState(): Promise<BotStateOut> {
+  return getJson<BotStateOut>("/api/bot/state");
+}
+
+export function fetchBotPositions(status: "open" | "closed" | "all" = "all"): Promise<BotPositionOut[]> {
+  return getJson<BotPositionOut[]>(`/api/bot/positions?status=${status}`);
 }
 
 export { ApiNotReadyError, UnauthorizedError };
