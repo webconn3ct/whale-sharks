@@ -2,7 +2,7 @@ services:
   - type: web
     name: whale-sharks-api
     env: python
-    plan: starter
+    plan: standard
     rootDir: backend
     buildCommand: "pip install -r requirements.txt && alembic upgrade head"
     startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
@@ -18,7 +18,7 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: CORS_ORIGINS
-        value: "https://whale-sharks.onrender.com"
+        value: "https://whalesharkks.com,https://www.whalesharkks.com,https://whale-sharks.onrender.com"
       - key: COOKIE_SAMESITE
         value: "none"
       - key: COOKIE_SECURE
