@@ -122,6 +122,14 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
         <a href="/admin" className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]">
           Admin
         </a>
+        <p className="mx-auto mt-4 max-w-2xl text-[11px] leading-relaxed text-[var(--text-muted)] opacity-70">
+          Whale ratings, consensus scores, "Data-backed lean" text, and all other picks, labels, and commentary
+          on this site are Whale Sharkks' own methodology applied to public data, offered for informational and
+          entertainment purposes only. They are opinions open to interpretation, not statements of fact, not
+          predictions of any market's or event's real-world outcome, and not financial or investment advice.
+          Nothing on this site, including KrillBot's simulated trades, should be relied upon to make trading or
+          wagering decisions.
+        </p>
       </footer>
     </div>
   );

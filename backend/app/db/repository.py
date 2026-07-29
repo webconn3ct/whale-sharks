@@ -1,8 +1,8 @@
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,6 +29,7 @@ from app.db.models import (
     BotState,
     ConsensusPosition,
     ConsensusPositionTrader,
+    DailyCatchPick,
     ExcludedMarket,
     ExcludedTrader,
     LoginEvent,
@@ -633,6 +634,35 @@ async def list_bot_positions(session: AsyncSession, status: str | None, limit: i
     return list(result.scalars().all())
 
 
+async def list_bot_positions_page(
+    session: AsyncSession, status: str | None, timeframe: str, page: int, page_size: int
+) -> tuple[list[BotPosition], int]:
+    """Paginated positions for the trade-history view. `timeframe` (day/week/
+    all_time) filters on exit_at — a rolling window, not a calendar-day cutoff,
+    so it doesn't go empty right after midnight. Open positions have no
+    exit_at yet, so they're never excluded by the timeframe filter."""
+    filters = []
+    if status == "open":
+        filters.append(BotPosition.status == BotPositionStatus.OPEN)
+    elif status == "closed":
+        filters.append(BotPosition.status == BotPositionStatus.CLOSED)
+
+    if timeframe != "all_time":
+        cutoff = datetime.now(UTC) - (timedelta(days=1) if timeframe == "day" else timedelta(days=7))
+        filters.append(or_(BotPosition.status == BotPositionStatus.OPEN, BotPosition.exit_at >= cutoff))
+
+    count_query = select(func.count()).select_from(BotPosition)
+    query = select(BotPosition).order_by(BotPosition.entry_at.desc())
+    for f in filters:
+        count_query = count_query.where(f)
+        query = query.where(f)
+
+    total = await session.scalar(count_query) or 0
+    query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await session.execute(query)
+    return list(result.scalars().all()), total
+
+
 async def insert_bot_recalibration(
     session: AsyncSession, reasoning: str, old_thresholds: dict, new_thresholds: dict
 ) -> None:
@@ -771,4 +801,24 @@ async def acknowledge_support_request(session: AsyncSession, request_id: int) ->
     await session.execute(
         SupportRequest.__table__.update().where(SupportRequest.id == request_id).values(acknowledged=True)
     )
+    await session.commit()
+
+
+# --- whale spotlight: daily catch pick lock ------------------------------------
+
+
+async def get_daily_catch_pick(session: AsyncSession, pick_date: date) -> DailyCatchPick | None:
+    result = await session.execute(select(DailyCatchPick).where(DailyCatchPick.pick_date == pick_date))
+    return result.scalar_one_or_none()
+
+
+async def create_daily_catch_pick(session: AsyncSession, pick_date: date, condition_id: str, outcome_index: int) -> None:
+    # ON CONFLICT DO NOTHING: if two requests race to pick "today" at once,
+    # whichever commits first wins and the other is silently a no-op — never
+    # two different picks for the same day.
+    stmt = pg_insert(DailyCatchPick).values(
+        pick_date=pick_date, condition_id=condition_id, outcome_index=outcome_index, picked_at=datetime.now(UTC)
+    )
+    stmt = stmt.on_conflict_do_nothing(index_elements=[DailyCatchPick.pick_date])
+    await session.execute(stmt)
     await session.commit()

@@ -9,7 +9,7 @@ import {
   fetchHighlights,
   fetchSummary,
 } from "../lib/api";
-import type { ConsensusFilters } from "../lib/types";
+import type { BotTimeframe, ConsensusFilters } from "../lib/types";
 
 const SUMMARY_POLL_MS = 60_000;
 const CONSENSUS_POLL_MS = 60_000;
@@ -81,10 +81,14 @@ export function useBotState() {
   });
 }
 
-export function useBotPositions(status: "open" | "closed" | "all" = "all") {
+export function useBotPositions(
+  status: "open" | "closed" | "all" = "all",
+  timeframe: BotTimeframe = "day",
+  page = 1
+) {
   return useQuery({
-    queryKey: ["bot-positions", status],
-    queryFn: () => fetchBotPositions(status),
+    queryKey: ["bot-positions", status, timeframe, page],
+    queryFn: () => fetchBotPositions(status, timeframe, page),
     refetchInterval: CONSENSUS_POLL_MS,
     retry: shouldRetry,
   });

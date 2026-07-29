@@ -149,6 +149,14 @@ class BotPositionOut(BaseModel):
     realized_pnl: float | None = None
 
 
+class PaginatedBotPositionsOut(BaseModel):
+    items: list[BotPositionOut]
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int
+
+
 class BotStateOut(BaseModel):
     cash_balance: float
     starting_balance: float

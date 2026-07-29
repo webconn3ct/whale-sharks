@@ -1,10 +1,11 @@
 import enum
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -349,3 +350,17 @@ class BotRecalibration(Base):
     reasoning: Mapped[str] = mapped_column(Text)
     old_thresholds: Mapped[dict] = mapped_column(JSON)
     new_thresholds: Mapped[dict] = mapped_column(JSON)
+
+
+class DailyCatchPick(Base):
+    """Locks the whale-spotlight "Daily Catch" card to one market per
+    calendar day (UTC) — picked once (highest whale rating in the DAY
+    variant at pick time) and held for the rest of that day instead of
+    being recomputed, and potentially flipping, on every 15-minute scan."""
+
+    __tablename__ = "daily_catch_picks"
+
+    pick_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    condition_id: Mapped[str] = mapped_column(String(66))
+    outcome_index: Mapped[int] = mapped_column(SmallInteger)
+    picked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

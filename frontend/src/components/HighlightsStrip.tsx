@@ -19,11 +19,13 @@ function HighlightCard({
   row,
   timeframe,
   onSelect,
+  emptyLabel = "No data yet",
 }: {
   eyebrow: string;
   row: ConsensusRowOut | null | undefined;
   timeframe: Variant;
   onSelect: SelectFn;
+  emptyLabel?: string;
 }) {
   return (
     <button
@@ -44,7 +46,7 @@ function HighlightCard({
           </span>
         </>
       ) : (
-        <span className="text-sm text-[var(--text-muted)]">No data yet</span>
+        <span className="text-sm text-[var(--text-muted)]">{emptyLabel}</span>
       )}
     </button>
   );
@@ -146,7 +148,14 @@ export function HighlightsStrip({
         ))}
         <HighlightCard eyebrow="Most volume" row={highlights.most_volume} timeframe="combined" onSelect={onSelect} />
         {TIMEFRAME_KEYS.map(({ key, label }) => (
-          <HighlightCard key={key} eyebrow={label} row={highlights.by_timeframe[key]} timeframe={key} onSelect={onSelect} />
+          <HighlightCard
+            key={key}
+            eyebrow={label}
+            row={highlights.by_timeframe[key]}
+            timeframe={key}
+            onSelect={onSelect}
+            emptyLabel="Picking today's catch…"
+          />
         ))}
       </div>
     </div>

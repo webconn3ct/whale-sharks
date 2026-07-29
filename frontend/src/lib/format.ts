@@ -1,18 +1,38 @@
-const compactNumber = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
-const compactCurrency = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
 const fullCurrency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
+// Intl's compact notation (notation: "compact") is what we used to use here,
+// but some browsers (Safari/WebKit in particular) silently drop the K/M/B
+// suffix for certain decimal values while keeping it for whole numbers — the
+// number renders with no unit at all. This abbreviates manually so the
+// suffix is never dependent on a specific Intl implementation's quirks.
+function abbreviate(value: number): string | null {
+  const abs = Math.abs(value);
+  let divisor: number;
+  let suffix: string;
+  if (abs >= 1_000_000_000) {
+    divisor = 1_000_000_000;
+    suffix = "B";
+  } else if (abs >= 1_000_000) {
+    divisor = 1_000_000;
+    suffix = "M";
+  } else if (abs >= 1_000) {
+    divisor = 1_000;
+    suffix = "K";
+  } else {
+    return null;
+  }
+  const rounded = Math.round((value / divisor) * 10) / 10;
+  const text = Number.isInteger(rounded) ? rounded.toString() : rounded.toFixed(1);
+  return `${text}${suffix}`;
+}
+
 export function formatCompactNumber(value: number): string {
-  return compactNumber.format(value);
+  return abbreviate(value) ?? Math.round(value).toString();
 }
 
 export function formatCompactCurrency(value: number): string {
-  return compactCurrency.format(value);
+  const abbreviated = abbreviate(value);
+  return abbreviated ? `$${abbreviated}` : fullCurrency.format(value);
 }
 
 export function formatCurrency(value: number): string {

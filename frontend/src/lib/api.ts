@@ -1,8 +1,8 @@
 import type {
   AccessCodeOut,
   AuthStatusOut,
-  BotPositionOut,
   BotStateOut,
+  BotTimeframe,
   ChatMessage,
   ConsensusFilters,
   ExcludedMarketOut,
@@ -11,6 +11,7 @@ import type {
   HighlightsOut,
   LeanOut,
   LoginStatsOut,
+  PaginatedBotPositionsOut,
   PaginatedConsensusOut,
   ScanOut,
   ScoringWeights,
@@ -214,8 +215,14 @@ export function fetchBotState(): Promise<BotStateOut> {
   return getJson<BotStateOut>("/api/bot/state");
 }
 
-export function fetchBotPositions(status: "open" | "closed" | "all" = "all"): Promise<BotPositionOut[]> {
-  return getJson<BotPositionOut[]>(`/api/bot/positions?status=${status}`);
+export function fetchBotPositions(
+  status: "open" | "closed" | "all" = "all",
+  timeframe: BotTimeframe = "day",
+  page = 1
+): Promise<PaginatedBotPositionsOut> {
+  return getJson<PaginatedBotPositionsOut>(
+    `/api/bot/positions?status=${status}&timeframe=${timeframe}&page=${page}`
+  );
 }
 
 export { ApiNotReadyError, UnauthorizedError };

@@ -1,8 +1,15 @@
 import { useState } from "react";
-import type { BotPositionOut, BotStateOut } from "../lib/types";
-import { formatCurrency, formatPercent, formatRelativeTime } from "../lib/format";
+import type { BotPositionOut, BotStateOut, BotTimeframe } from "../lib/types";
+import { formatCurrency, formatPercent, formatProbability, formatRelativeTime } from "../lib/format";
 import { useBotPositions, useBotState } from "../hooks/useApi";
 import { KrillIcon } from "./KrillIcon";
+import { PageControl } from "./PageControl";
+
+const TIMEFRAME_OPTIONS: { value: BotTimeframe; label: string }[] = [
+  { value: "day", label: "Daily" },
+  { value: "week", label: "Weekly" },
+  { value: "all_time", label: "All time" },
+];
 
 function StatTile({ label, value, tone }: { label: string; value: string; tone?: "good" | "critical" | "accent" }) {
   const color =
@@ -37,7 +44,7 @@ function PositionRow({ position }: { position: BotPositionOut }) {
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums">{formatCurrency(position.stake)}</td>
       <td className="px-3 py-2.5 text-right tabular-nums text-[var(--text-secondary)]">
-        {formatCurrency(position.entry_price)}
+        {formatProbability(position.entry_price)}
       </td>
       <td className="px-3 py-2.5 text-right" style={{ color: isPositive ? "var(--good)" : "var(--critical)" }}>
         <div className="tabular-nums font-medium">
@@ -79,8 +86,19 @@ function BotSummary({ state }: { state: BotStateOut | undefined }) {
 
 export function BotSection() {
   const [tab, setTab] = useState<"open" | "closed">("open");
+  const [timeframe, setTimeframe] = useState<BotTimeframe>("day");
+  const [page, setPage] = useState(1);
   const stateQuery = useBotState();
-  const positionsQuery = useBotPositions(tab);
+  const positionsQuery = useBotPositions(tab, timeframe, page);
+
+  const changeTab = (next: "open" | "closed") => {
+    setTab(next);
+    setPage(1);
+  };
+  const changeTimeframe = (next: BotTimeframe) => {
+    setTimeframe(next);
+    setPage(1);
+  };
 
   return (
     <div className="mb-6 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-page)] p-4">
@@ -105,54 +123,76 @@ export function BotSection() {
       <BotSummary state={stateQuery.data} />
 
       <div className="mt-4">
-        <div className="mb-2 flex gap-2">
-          <button
-            onClick={() => setTab("open")}
-            className={`rounded-md px-3 py-1 text-xs font-medium ${
-              tab === "open"
-                ? "bg-[var(--accent)] text-white"
-                : "border border-[var(--border-hairline)] text-[var(--text-secondary)]"
-            }`}
-          >
-            Open positions
-          </button>
-          <button
-            onClick={() => setTab("closed")}
-            className={`rounded-md px-3 py-1 text-xs font-medium ${
-              tab === "closed"
-                ? "bg-[var(--accent)] text-white"
-                : "border border-[var(--border-hairline)] text-[var(--text-secondary)]"
-            }`}
-          >
-            Trade history
-          </button>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => changeTab("open")}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${
+                tab === "open"
+                  ? "bg-[var(--accent)] text-white"
+                  : "border border-[var(--border-hairline)] text-[var(--text-secondary)]"
+              }`}
+            >
+              Open positions
+            </button>
+            <button
+              onClick={() => changeTab("closed")}
+              className={`rounded-md px-3 py-1 text-xs font-medium ${
+                tab === "closed"
+                  ? "bg-[var(--accent)] text-white"
+                  : "border border-[var(--border-hairline)] text-[var(--text-secondary)]"
+              }`}
+            >
+              Trade history
+            </button>
+          </div>
+          {tab === "closed" && (
+            <select
+              value={timeframe}
+              onChange={(e) => changeTimeframe(e.target.value as BotTimeframe)}
+              className="rounded-md border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-2 py-1 text-xs text-[var(--text-secondary)] focus:border-[var(--accent)] focus:outline-none"
+            >
+              {TIMEFRAME_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {positionsQuery.isLoading ? (
           <div className="py-8 text-center text-sm text-[var(--text-muted)]">Loading…</div>
-        ) : (positionsQuery.data ?? []).length === 0 ? (
+        ) : (positionsQuery.data?.items ?? []).length === 0 ? (
           <div className="py-8 text-center text-sm text-[var(--text-muted)]">
-            {tab === "open" ? "No open positions right now." : "No closed trades yet."}
+            {tab === "open" ? "No open positions right now." : "No closed trades in this window."}
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)]">
-            <table className="w-full border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] text-left text-xs uppercase tracking-wide text-[var(--text-muted)]">
-                  <th className="px-3 py-2.5">Market</th>
-                  <th className="px-3 py-2.5 text-right">Stake</th>
-                  <th className="px-3 py-2.5 text-right">Entry</th>
-                  <th className="px-3 py-2.5 text-right">P/L</th>
-                  <th className="px-3 py-2.5 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="bg-[var(--bg-surface)]">
-                {(positionsQuery.data ?? []).map((p) => (
-                  <PositionRow key={p.id} position={p} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="overflow-x-auto rounded-lg border border-[var(--border-hairline)]">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] text-left text-xs uppercase tracking-wide text-[var(--text-muted)]">
+                    <th className="px-3 py-2.5">Market</th>
+                    <th className="px-3 py-2.5 text-right">Stake</th>
+                    <th className="px-3 py-2.5 text-right">Entry</th>
+                    <th className="px-3 py-2.5 text-right">P/L</th>
+                    <th className="px-3 py-2.5 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-[var(--bg-surface)]">
+                  {(positionsQuery.data?.items ?? []).map((p) => (
+                    <PositionRow key={p.id} position={p} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <PageControl
+              page={positionsQuery.data?.page ?? 1}
+              totalPages={positionsQuery.data?.total_pages ?? 1}
+              onChange={setPage}
+            />
+          </>
         )}
       </div>
     </div>

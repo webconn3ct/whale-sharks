@@ -8,6 +8,7 @@ from app.api.schemas import (
     BotRecalibrationOut,
     BotStateOut,
     ConsensusSnapshot,
+    PaginatedBotPositionsOut,
     variant_key,
 )
 from app.core.consensus_engine import CANONICAL_TOP_N, Variant
@@ -51,18 +52,24 @@ async def get_bot_state(snapshot: ConsensusSnapshot = Depends(get_ready_snapshot
     )
 
 
-@router.get("/positions", response_model=list[BotPositionOut])
+BOT_POSITIONS_PAGE_SIZE = 10
+
+
+@router.get("/positions", response_model=PaginatedBotPositionsOut)
 async def list_bot_positions(
     snapshot: ConsensusSnapshot = Depends(get_ready_snapshot),
     status: Literal["open", "closed", "all"] = Query(default="all"),
-    limit: int = Query(default=50, ge=1, le=200),
-) -> list[BotPositionOut]:
+    timeframe: Literal["day", "week", "all_time"] = Query(default="day"),
+    page: int = Query(default=1, ge=1),
+) -> PaginatedBotPositionsOut:
     rows_by_key = {
         (r.condition_id, r.outcome_index): r for r in snapshot.variants.get(variant_key(Variant.COMBINED, CANONICAL_TOP_N), [])
     }
 
     async with get_session() as session:
-        positions = await repository.list_bot_positions(session, None if status == "all" else status, limit)
+        positions, total = await repository.list_bot_positions_page(
+            session, None if status == "all" else status, timeframe, page, BOT_POSITIONS_PAGE_SIZE
+        )
 
     out = []
     for p in positions:
@@ -93,7 +100,8 @@ async def list_bot_positions(
                 realized_pnl=float(p.realized_pnl) if p.realized_pnl is not None else None,
             )
         )
-    return out
+    total_pages = max(1, (total + BOT_POSITIONS_PAGE_SIZE - 1) // BOT_POSITIONS_PAGE_SIZE)
+    return PaginatedBotPositionsOut(items=out, page=page, page_size=BOT_POSITIONS_PAGE_SIZE, total_items=total, total_pages=total_pages)
 
 
 @router.get("/recalibrations", response_model=list[BotRecalibrationOut])

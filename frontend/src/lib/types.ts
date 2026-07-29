@@ -201,3 +201,13 @@ export interface BotPositionOut {
   exit_reason: string | null;
   realized_pnl: number | null;
 }
+
+export interface PaginatedBotPositionsOut {
+  items: BotPositionOut[];
+  page: number;
+  page_size: number;
+  total_items: number;
+  total_pages: number;
+}
+
+export type BotTimeframe = "day" | "week" | "all_time";
