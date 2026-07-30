@@ -12,6 +12,7 @@ import { AccessGate } from "./components/AccessGate";
 import { AdminLogin } from "./components/AdminLogin";
 import { AdminPanel } from "./components/AdminPanel";
 import { ChatWidget } from "./components/ChatWidget";
+import { InstagramIcon } from "./components/InstagramIcon";
 import { useAuthStatus, useCategories, useConsensus, useHighlights, useSummary } from "./hooks/useApi";
 import type { ConsensusFilters, ConsensusRowOut, Variant } from "./lib/types";
 import { ApiNotReadyError, logout } from "./lib/api";
@@ -33,8 +34,17 @@ const DEFAULT_FILTERS: ConsensusFilters = {
   page: 1,
 };
 
+// A deep link (e.g. from an admin notification) can arrive with ?search= —
+// in that case relax the default whale/status filters so the target market
+// is actually visible regardless of whale count or active/finished status.
+function initialFilters(): ConsensusFilters {
+  const search = new URLSearchParams(window.location.search).get("search");
+  if (!search) return DEFAULT_FILTERS;
+  return { ...DEFAULT_FILTERS, search, min_whales: 0, status: "all" };
+}
+
 function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
-  const [filters, setFilters] = useState<ConsensusFilters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<ConsensusFilters>(initialFilters);
   const [selectedRow, setSelectedRow] = useState<SelectedRow | null>(null);
 
   const selectFromTable = (row: ConsensusRowOut) =>
@@ -62,6 +72,17 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
+      <div className="mb-3 flex justify-end">
+        <a
+          href="https://www.instagram.com/whalesharkks"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+        >
+          <InstagramIcon size={15} />
+          @whalesharkks
+        </a>
+      </div>
       <header className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <img src="/brand/shark-mark-120.png" alt="Whale Sharkks" className="h-10 w-10 object-contain" />

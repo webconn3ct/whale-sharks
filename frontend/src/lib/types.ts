@@ -168,6 +168,21 @@ export interface SupportRequestOut {
   acknowledged: boolean;
 }
 
+export interface SignupOut {
+  id: number;
+  contact: string;
+  submitted_at: string;
+  acknowledged: boolean;
+}
+
+export interface HotTraderOut {
+  username: string | null;
+  wallet_address: string;
+  recent_form: number;
+  win_rate: number;
+  sample_size: number;
+}
+
 export interface BotStateOut {
   cash_balance: number;
   starting_balance: number;

@@ -211,6 +211,18 @@ class SupportRequest(Base):
     acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
+class Signup(Base):
+    """An email/Instagram handle a visitor left on the login page's "Sign
+    up" box — the admin reaches out to them directly from the admin log."""
+
+    __tablename__ = "signups"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    contact: Mapped[str] = mapped_column(String(255))
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class ExcludedMarket(Base):
     """Content moderation: condition_ids hidden from the public dashboard."""
 

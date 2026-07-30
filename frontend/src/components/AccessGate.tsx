@@ -1,6 +1,53 @@
 import { useState } from "react";
 import { OceanScene } from "./OceanScene";
-import { unlock } from "../lib/api";
+import { submitSignup, unlock } from "../lib/api";
+
+function SignupBox() {
+  const [contact, setContact] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!contact.trim() || status === "sending") return;
+    setStatus("sending");
+    try {
+      await submitSignup(contact.trim());
+      setStatus("sent");
+      setContact("");
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-4 rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-6 shadow-2xl"
+    >
+      <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">
+        Sign up:
+      </label>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={contact}
+          onChange={(e) => setContact(e.target.value)}
+          placeholder="Email or Instagram handle"
+          className="w-full rounded-md border border-[var(--border-hairline)] bg-[var(--bg-page)] px-3 py-2.5 text-center text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none"
+        />
+      </div>
+      {status === "sent" && <p className="mt-2 text-center text-sm text-[var(--good)]">Thanks — we'll be in touch.</p>}
+      {status === "error" && <p className="mt-2 text-center text-sm text-[var(--critical)]">Something went wrong — try again.</p>}
+      <button
+        type="submit"
+        disabled={status === "sending"}
+        className="mt-4 w-full rounded-md bg-[var(--accent)] px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+      >
+        {status === "sending" ? "Sending…" : "Submit"}
+      </button>
+    </form>
+  );
+}
 
 export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
   const [code, setCode] = useState("");
@@ -74,6 +121,8 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
             {loading ? "Checking…" : "Enter"}
           </button>
         </form>
+
+        <SignupBox />
       </div>
     </div>
   );

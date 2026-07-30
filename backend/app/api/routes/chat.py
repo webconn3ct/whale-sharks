@@ -8,7 +8,7 @@ from app.api.schemas import variant_key
 from app.config import Settings, get_settings
 from app.core import cache as cache_module
 from app.core.consensus_engine import Variant, whale_rating
-from app.core.recommendation import MIN_OPPOSING_WHALES
+from app.core.recommendation import MIN_OPPOSING_WHALES, compute_lean_facts, get_reasoning
 from app.db import repository
 from app.db.session import get_session
 
@@ -73,14 +73,25 @@ What you should help visitors with:
 - Always be clear you trade with a HYPOTHETICAL $500, not real money — you're a transparent demonstration of \
   the whale-consensus strategy, not investment advice, and past performance shown is not a guarantee of \
   future results.
-- General questions about how the site works, how often it refreshes (about every 15 minutes), and what \
-  the numbers mean.
+- General questions about how the site works, how often it refreshes (on a fixed schedule, at the top and \
+  bottom of every hour), and what the numbers mean.
 - General crypto/prediction-market questions are fine to answer briefly if relevant to context.
 
 RECOMMENDATION RULE — important: when asked what's worth watching, what to check out, or for a suggestion, \
 ONLY reference markets from CURRENT TOP PICKS below or your own open positions in BOT CONTEXT below. Never \
 invent, guess, or name any other specific market — if nothing in those two lists fits what they're asking, \
 say so honestly and point them to the dashboard's filters instead of making something up.
+
+LEAN CONSISTENCY — each entry in CURRENT TOP PICKS already includes its exact "Lean" — the same data-backed \
+lean shown on that market's card on the dashboard. When discussing which way a market leans, use that exact \
+lean, don't re-derive or contradict it, and never present both sides of a matchup as equally good — the lean \
+already resolved which side the data favors.
+
+TIMING — only state when a match/game/event starts, ends, or whether it has already happened if that exact \
+information is given to you in the facts below (e.g. a "Scheduled to end" timestamp). Never estimate or \
+guess a schedule from general knowledge of the sport or league — your training data can be stale and a \
+specific event's real timing can differ. If you don't have the specific timing data for what's being asked, \
+say plainly that you don't have that information rather than guessing.
 
 POLITICS — you don't cover politics. If asked to analyze, predict, or give any opinion or insight on a \
 political market, briefly decline and say your focus is sports, then redirect to what you can help with. \
@@ -127,11 +138,15 @@ class ChatResponse(BaseModel):
     reply: str
 
 
-async def _top_picks_context() -> str:
+async def _top_picks_context(settings: Settings) -> str:
     """The same "Markets" cards shown in the whale spotlight — the highest-
     volume genuine matchups right now — given as real facts so the assistant
     has something concrete to reference instead of the RECOMMENDATION RULE
-    leaving it nothing to say."""
+    leaving it nothing to say. Reasoning text uses the exact same cache key
+    as highlights.py's card builder, so if the assistant references a
+    matchup that's also currently shown on a card, the lean it describes is
+    byte-identical to what the card says — never an independently-formed,
+    possibly-different opinion."""
     snapshot = cache_module.cache.snapshot
     if snapshot is None:
         return "CURRENT TOP PICKS: unavailable right now."
@@ -158,11 +173,30 @@ async def _top_picks_context() -> str:
 
     candidates.sort(key=lambda c: c[2], reverse=True)
 
-    picks = [
-        f"  - {leader.market_title}: {leader.outcome_label} ({leader.whale_count} whales) vs "
-        f"{other.outcome_label} ({other.whale_count} whales), ${volume:,.0f} combined."
-        for leader, other, volume in candidates[:3]
-    ]
+    # Same event can spawn multiple markets (different lines/thresholds) —
+    # only the highest-volume one per event, so this list can't reference
+    # what reads as two contradictory picks on the same real-world game.
+    selected, seen_events = [], set()
+    for candidate in candidates:
+        if len(selected) >= 3:
+            break
+        event_slug = candidate[0].event_slug
+        if event_slug and event_slug in seen_events:
+            continue
+        if event_slug:
+            seen_events.add(event_slug)
+        selected.append(candidate)
+
+    picks = []
+    for leader, other, volume in selected:
+        facts = compute_lean_facts(leader, other)
+        reasoning = await get_reasoning(settings, snapshot.scan_id, f"matchup:{leader.id}:{other.id}", facts)
+        picks.append(
+            f"  - {leader.market_title}: {leader.outcome_label} ({leader.whale_count} whales) vs "
+            f"{other.outcome_label} ({other.whale_count} whales), ${volume:,.0f} combined. "
+            f"{'Scheduled to end ' + leader.end_date.isoformat() if leader.end_date else 'No scheduled end time given'}. "
+            f'Lean: "{reasoning}"'
+        )
     if not picks:
         return "CURRENT TOP PICKS: no active matchups right now."
     return "CURRENT TOP PICKS (the same 'Markets' cards shown in the whale spotlight):\n" + "\n".join(picks)
@@ -236,7 +270,7 @@ async def chat(body: ChatRequest, settings: Settings = Depends(get_settings)) ->
     ]
     messages.append({"role": "user", "content": body.message})
 
-    system_prompt = f"{BASE_SYSTEM_PROMPT}\n\n{await _top_picks_context()}\n\n{await _bot_context_block()}"
+    system_prompt = f"{BASE_SYSTEM_PROMPT}\n\n{await _top_picks_context(settings)}\n\n{await _bot_context_block()}"
 
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     try:

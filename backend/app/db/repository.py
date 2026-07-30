@@ -36,6 +36,7 @@ from app.db.models import (
     Market,
     Scan,
     ScanStatus,
+    Signup,
     SupportRequest,
     TraderLeaderboardRank,
     TraderTrackRecord,
@@ -594,6 +595,12 @@ async def create_bot_position(session: AsyncSession, **fields) -> BotPosition:
     return position
 
 
+async def count_bot_entries_since(session: AsyncSession, since: datetime) -> int:
+    return await session.scalar(
+        select(func.count()).select_from(BotPosition).where(BotPosition.entry_at >= since)
+    ) or 0
+
+
 async def close_bot_position(
     session: AsyncSession,
     position_id: int,
@@ -802,6 +809,68 @@ async def acknowledge_support_request(session: AsyncSession, request_id: int) ->
         SupportRequest.__table__.update().where(SupportRequest.id == request_id).values(acknowledged=True)
     )
     await session.commit()
+
+
+# --- login-page signup box ------------------------------------------------------
+
+
+async def create_signup(session: AsyncSession, contact: str) -> Signup:
+    signup = Signup(contact=contact, submitted_at=datetime.now(UTC), acknowledged=False)
+    session.add(signup)
+    await session.commit()
+    return signup
+
+
+async def list_signups(session: AsyncSession, limit: int = 100) -> list[Signup]:
+    result = await session.execute(select(Signup).order_by(Signup.submitted_at.desc()).limit(limit))
+    return list(result.scalars().all())
+
+
+async def acknowledge_signup(session: AsyncSession, signup_id: int) -> None:
+    await session.execute(Signup.__table__.update().where(Signup.id == signup_id).values(acknowledged=True))
+    await session.commit()
+
+
+# --- admin: hot-streak traders --------------------------------------------------
+
+
+async def get_hot_traders(session: AsyncSession, limit: int = 5, min_sample: int = 3) -> list[dict]:
+    """Top traders by recent form (win rate over their last ~10 resolved
+    positions) — real Polymarket-reported outcomes, not a guess. Restricted
+    to traders who are on some leaderboard in the latest scan, so this
+    never surfaces someone who's since dropped off entirely, and to a
+    minimum sample size so one lucky trade can't look like a hot streak."""
+    latest_scan_id = await session.scalar(
+        select(Scan.id).where(Scan.status == ScanStatus.COMPLETED).order_by(Scan.id.desc()).limit(1)
+    )
+    if latest_scan_id is None:
+        return []
+
+    tracked_ids = select(TraderLeaderboardRank.trader_id).where(TraderLeaderboardRank.scan_id == latest_scan_id).distinct()
+
+    result = await session.execute(
+        select(
+            TraderModel.username,
+            TraderModel.wallet_address,
+            TraderTrackRecord.recent_form,
+            TraderTrackRecord.win_rate,
+            TraderTrackRecord.sample_size,
+        )
+        .join(TraderTrackRecord, TraderTrackRecord.trader_id == TraderModel.id)
+        .where(TraderModel.id.in_(tracked_ids), TraderTrackRecord.sample_size >= min_sample)
+        .order_by(TraderTrackRecord.recent_form.desc())
+        .limit(limit)
+    )
+    return [
+        {
+            "username": username,
+            "wallet_address": wallet_address,
+            "recent_form": float(recent_form),
+            "win_rate": float(win_rate),
+            "sample_size": sample_size,
+        }
+        for username, wallet_address, recent_form, win_rate, sample_size in result.all()
+    ]
 
 
 # --- whale spotlight: daily catch pick lock ------------------------------------

@@ -13,8 +13,10 @@ import type {
   LoginStatsOut,
   PaginatedBotPositionsOut,
   PaginatedConsensusOut,
+  HotTraderOut,
   ScanOut,
   ScoringWeights,
+  SignupOut,
   SummaryOut,
   SupportRequestOut,
   WhaleAlertOut,
@@ -103,6 +105,10 @@ export function fetchConsensusLean(rowId: string, timeframe: string, topN: numbe
 
 export function unlock(code: string): Promise<{ ok: boolean }> {
   return postJson("/api/auth/unlock", { code });
+}
+
+export function submitSignup(contact: string): Promise<{ ok: boolean }> {
+  return postJson("/api/auth/signup", { contact });
 }
 
 export function adminLogin(password: string): Promise<{ ok: boolean }> {
@@ -203,6 +209,18 @@ export function fetchSupportRequests(): Promise<SupportRequestOut[]> {
 
 export function acknowledgeSupportRequest(id: number): Promise<{ ok: boolean }> {
   return postJson(`/api/admin/support-requests/${id}/acknowledge`, {});
+}
+
+export function fetchSignups(): Promise<SignupOut[]> {
+  return getJson<SignupOut[]>("/api/admin/signups");
+}
+
+export function acknowledgeSignup(id: number): Promise<{ ok: boolean }> {
+  return postJson(`/api/admin/signups/${id}/acknowledge`, {});
+}
+
+export function fetchHotTraders(): Promise<HotTraderOut[]> {
+  return getJson<HotTraderOut[]>("/api/admin/hot-traders");
 }
 
 export function fetchLoginStats(): Promise<LoginStatsOut> {

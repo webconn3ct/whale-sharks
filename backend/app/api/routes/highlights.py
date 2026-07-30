@@ -78,7 +78,22 @@ async def _build_top_picks(matchup_pool: list, settings: Settings, scan_id: int)
         candidates.append((leader, other, leader.combined_value + other.combined_value))
 
     candidates.sort(key=lambda c: c[2], reverse=True)
-    selected = candidates[:3]
+
+    # The same real-world game can spawn several markets (different point
+    # totals, alternate lines, etc.) that share an event_slug but have
+    # different condition_ids — only the single highest-volume one per event
+    # gets a slot, so the same matchup never fills two of the three cards.
+    selected: list[tuple] = []
+    seen_events: set[str] = set()
+    for candidate in candidates:
+        if len(selected) >= 3:
+            break
+        event_slug = candidate[0].event_slug
+        if event_slug and event_slug in seen_events:
+            continue
+        if event_slug:
+            seen_events.add(event_slug)
+        selected.append(candidate)
 
     picks: list[TopPickOut] = []
     for leader, other, _total_volume in selected:

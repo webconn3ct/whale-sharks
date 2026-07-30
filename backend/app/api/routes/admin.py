@@ -331,3 +331,48 @@ async def acknowledge_support_request(request_id: int):
     async with get_session() as session:
         await repository.acknowledge_support_request(session, request_id)
     return {"ok": True}
+
+
+# ---- login-page signups -------------------------------------------------------
+
+
+class SignupOut(BaseModel):
+    id: int
+    contact: str
+    submitted_at: datetime
+    acknowledged: bool
+
+
+@router.get("/signups", response_model=list[SignupOut])
+async def get_signups():
+    async with get_session() as session:
+        signups = await repository.list_signups(session)
+    return [
+        SignupOut(id=s.id, contact=s.contact, submitted_at=s.submitted_at, acknowledged=s.acknowledged)
+        for s in signups
+    ]
+
+
+@router.post("/signups/{signup_id}/acknowledge")
+async def acknowledge_signup(signup_id: int):
+    async with get_session() as session:
+        await repository.acknowledge_signup(session, signup_id)
+    return {"ok": True}
+
+
+# ---- hot-streak traders ---------------------------------------------------------
+
+
+class HotTraderOut(BaseModel):
+    username: str | None
+    wallet_address: str
+    recent_form: float
+    win_rate: float
+    sample_size: int
+
+
+@router.get("/hot-traders", response_model=list[HotTraderOut])
+async def get_hot_traders():
+    async with get_session() as session:
+        traders = await repository.get_hot_traders(session)
+    return [HotTraderOut(**t) for t in traders]

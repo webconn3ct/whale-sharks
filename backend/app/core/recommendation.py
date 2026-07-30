@@ -26,8 +26,11 @@ Hard rules:
 - State the lean directly and plainly — no hedging words like "might", "could", "possibly".
 - If `opposing` is null, just summarize the strength of the one-sided consensus in `primary` — do not imply \
 a comparison that doesn't exist.
-- If `opposing` is present, explain which side the data favors and the single clearest reason why \
-(whale count, leaderboard rank quality, or score gap — whichever is most lopsided).
+- If `opposing` is present, `leader_outcome` in the facts is the side the data already favors — your sentence \
+MUST name that exact side as the lean, and explain the single clearest reason why (whale count, leaderboard \
+rank quality, or score gap — whichever is most lopsided). Never present both sides as comparably attractive, \
+never say something like "both sides have a case" or "it could go either way" — the facts already resolved \
+which side leads, your only job is to explain why, in one clear direction.
 - Describe what the whale data currently shows, never what will happen — this is NOT a prediction of the \
 market's real-world outcome, and must never be phrased as one (no "will win", "is likely to happen", etc.).
 - The sentence must be a real, complete, well-formed sentence on its own — not a sentence fragment, not a \

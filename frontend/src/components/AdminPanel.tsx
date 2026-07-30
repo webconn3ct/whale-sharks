@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   acknowledgeAllWhaleAlerts,
+  acknowledgeSignup,
   acknowledgeSupportRequest,
   acknowledgeWhaleAlert,
   adminLogout,
@@ -14,8 +15,10 @@ import {
   fetchBotPauseState,
   fetchExcludedMarkets,
   fetchExcludedTraders,
+  fetchHotTraders,
   fetchLoginStats,
   fetchScoringWeights,
+  fetchSignups,
   fetchSupportRequests,
   fetchWhaleAlerts,
   pauseBotEntries,
@@ -148,6 +151,45 @@ function StatTile({ label, value }: { label: string; value: string }) {
   );
 }
 
+function HotTradersSection() {
+  const query = useQuery({ queryKey: ["admin", "hot-traders"], queryFn: fetchHotTraders, refetchInterval: 60_000 });
+  const traders = query.data ?? [];
+
+  return (
+    <Section title="Hot streak — top traders by recent form">
+      <p className="mb-3 text-xs text-[var(--text-muted)]">
+        Win rate over each trader's last ~10 resolved Polymarket positions (real reported outcomes, minimum
+        3-trade sample so one lucky bet can't look like a streak).
+      </p>
+      {traders.length === 0 ? (
+        <p className="text-sm text-[var(--text-muted)]">Not enough data yet.</p>
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {traders.map((t) => {
+            const pct = Math.round(t.recent_form * 100);
+            return (
+              <div key={t.wallet_address} className="flex items-center gap-3">
+                <div className="w-32 shrink-0 truncate text-sm text-[var(--text-secondary)]" title={t.wallet_address}>
+                  {t.username || `${t.wallet_address.slice(0, 6)}…${t.wallet_address.slice(-4)}`}
+                </div>
+                <div className="h-5 flex-1 overflow-hidden rounded bg-[var(--bg-page)]">
+                  <div
+                    className="h-full rounded bg-[var(--accent)]"
+                    style={{ width: `${Math.max(pct, 4)}%` }}
+                  />
+                </div>
+                <div className="w-24 shrink-0 text-right text-sm tabular-nums text-[var(--text-primary)]">
+                  {pct}% <span className="text-[var(--text-muted)]">({t.sample_size})</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Section>
+  );
+}
+
 function LoginStatsSection() {
   const statsQuery = useQuery({ queryKey: ["admin", "login-stats"], queryFn: fetchLoginStats, refetchInterval: 60_000 });
   const s = statsQuery.data;
@@ -208,15 +250,21 @@ function WhaleAlertsList() {
             key={a.id}
             className="flex items-center justify-between gap-3 rounded-lg border border-[var(--accent)] bg-[var(--bg-page)] px-3 py-2.5 text-sm"
           >
-            <div className="min-w-0">
-              <div className="truncate font-medium text-[var(--text-primary)]" title={a.market_title}>
+            <a
+              href={`/?search=${encodeURIComponent(a.market_title)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="min-w-0 hover:opacity-80"
+              title="Open this market on the dashboard"
+            >
+              <div className="truncate font-medium text-[var(--text-primary)] underline decoration-dotted underline-offset-2">
                 {a.market_title || "Untitled market"} <span className="text-[var(--text-muted)]">· {a.outcome_label}</span>
               </div>
               <div className="text-xs text-[var(--text-muted)]">
                 {a.username || `${a.wallet_address.slice(0, 6)}…${a.wallet_address.slice(-4)}`} —{" "}
                 {formatCompactCurrency(a.position_value)} · {formatRelativeTime(a.detected_at)}
               </div>
-            </div>
+            </a>
             <button
               onClick={() => ackMutation.mutate(a.id)}
               className="shrink-0 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
@@ -288,6 +336,46 @@ function NotificationsSection() {
         <SupportRequestsList />
         <WhaleAlertsList />
       </div>
+    </Section>
+  );
+}
+
+function SignupsSection() {
+  const qc = useQueryClient();
+  const signupsQuery = useQuery({ queryKey: ["admin", "signups"], queryFn: fetchSignups, refetchInterval: 30_000 });
+  const ackMutation = useMutation({
+    mutationFn: acknowledgeSignup,
+    onSuccess: (_res, id) =>
+      qc.setQueryData(["admin", "signups"], (prev: typeof signupsQuery.data) => (prev ?? []).filter((s) => s.id !== id)),
+  });
+
+  const signups = (signupsQuery.data ?? []).filter((s) => !s.acknowledged);
+
+  return (
+    <Section title="Sign-up log">
+      <p className="mb-3 text-xs text-[var(--text-muted)]">
+        Emails/Instagram handles submitted from the login page — reach out, then dismiss.
+      </p>
+      <ul className="space-y-2">
+        {signups.map((s) => (
+          <li
+            key={s.id}
+            className="flex items-center justify-between gap-3 rounded-lg border border-[var(--accent)] bg-[var(--bg-page)] px-3 py-2.5 text-sm"
+          >
+            <div className="min-w-0">
+              <div className="truncate font-medium text-[var(--text-primary)]">{s.contact}</div>
+              <div className="text-xs text-[var(--text-muted)]">{formatRelativeTime(s.submitted_at)}</div>
+            </div>
+            <button
+              onClick={() => ackMutation.mutate(s.id)}
+              className="shrink-0 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+            >
+              Dismiss
+            </button>
+          </li>
+        ))}
+        {signups.length === 0 && <li className="text-sm text-[var(--text-muted)]">No new sign-ups.</li>}
+      </ul>
     </Section>
   );
 }
@@ -584,6 +672,8 @@ export function AdminPanel({ onLoggedOut }: { onLoggedOut: () => void }) {
       </header>
       <div className="flex flex-col gap-6">
         <NotificationsSection />
+        <SignupsSection />
+        <HotTradersSection />
         <LoginStatsSection />
         <OperationalControls />
         <ScoringWeightsForm />

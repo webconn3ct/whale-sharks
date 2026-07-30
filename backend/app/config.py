@@ -11,7 +11,6 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:5173"
 
-    scan_interval_minutes: int = 15
     # Nothing currently queries historical (non-latest) scans for anything
     # user-facing — only the most recent completed scan is ever read. Kept
     # short on purpose: each scan's consensus data is real row volume, and a

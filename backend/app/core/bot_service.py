@@ -33,7 +33,11 @@ from app.db.session import get_session
 logger = logging.getLogger(__name__)
 
 STAKE_TIERS = (10.0, 25.0, 50.0)
-MAX_CONCURRENT_POSITIONS = 10
+MAX_CONCURRENT_POSITIONS = 3
+# A hard cap, not a quota — the bot never trades to "catch up" to this
+# number, it only ever trades when a candidate genuinely clears the
+# quantitative bar. This just bounds how much it can do in a bad day.
+MAX_DAILY_ENTRIES = 10
 RECALIBRATION_INTERVAL = 15
 RECALIBRATION_LOOKBACK = 30
 # New entries require the snapshot to be this fresh — protects against
@@ -187,6 +191,11 @@ async def _process_entry(
     if len(open_positions) >= MAX_CONCURRENT_POSITIONS:
         return
     if cash < min(STAKE_TIERS):
+        return
+
+    today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    entries_today = await repository.count_bot_entries_since(session, today_start)
+    if entries_today >= MAX_DAILY_ENTRIES:
         return
 
     held_conditions = {p.condition_id for p in open_positions}

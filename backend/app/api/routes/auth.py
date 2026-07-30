@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.deps import require_admin
 from app.config import Settings, get_settings
@@ -80,6 +80,17 @@ async def admin_logout(response: Response, settings: Settings = Depends(get_sett
 @router.post("/logout")
 async def logout(response: Response, settings: Settings = Depends(get_settings)):
     _clear_cookie(response, VISITOR_COOKIE, settings)
+    return {"ok": True}
+
+
+class SignupRequest(BaseModel):
+    contact: str = Field(min_length=2, max_length=255)
+
+
+@router.post("/signup")
+async def signup(body: SignupRequest):
+    async with get_session() as session:
+        await repository.create_signup(session, body.contact.strip())
     return {"ok": True}
 
 
