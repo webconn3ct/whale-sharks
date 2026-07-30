@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ConsensusRowOut, HighlightsOut, MatchupOut, TopPickOut, Variant } from "../lib/types";
 import { formatCompactCurrency, formatProbability } from "../lib/format";
+import { useConsensusLean } from "../hooks/useApi";
 
 type SelectFn = (row: ConsensusRowOut, timeframe: Variant, topN: number) => void;
 
@@ -86,7 +87,11 @@ function MatchupCard({
   matchup: MatchupOut;
   onSelect: SelectFn;
 }) {
-  const [showReasoning, setShowReasoning] = useState(false);
+  const [reasoningRequested, setReasoningRequested] = useState(false);
+  // Only fires once the visitor actually asks for it — the lean used to be
+  // generated for every top-pick card on every scan cycle regardless of
+  // whether anyone looked, which burned API calls for nothing.
+  const leanQuery = useConsensusLean(reasoningRequested ? matchup.leader.id : null, "combined", HIGHLIGHTS_TOP_N);
 
   return (
     <div className={`flex ${CARD_SIZE} flex-col justify-center gap-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-surface)] px-4 py-3 text-left`}>
@@ -106,15 +111,17 @@ function MatchupCard({
           onSelect={() => onSelect(matchup.other, "combined", HIGHLIGHTS_TOP_N)}
         />
       </div>
-      {showReasoning && (
-        <p className="text-xs leading-relaxed text-[var(--text-secondary)]">{matchup.reasoning}</p>
+      {reasoningRequested && (
+        <p className="text-xs leading-relaxed text-[var(--text-secondary)]">
+          {leanQuery.isLoading ? "Computing…" : leanQuery.data?.reasoning ?? "No insight available for this market."}
+        </p>
       )}
       <button
         type="button"
-        onClick={() => setShowReasoning((v) => !v)}
+        onClick={() => setReasoningRequested((v) => !v)}
         className="text-left text-xs text-[var(--text-muted)] underline decoration-dotted underline-offset-2 hover:text-[var(--text-secondary)]"
       >
-        {showReasoning ? "Hide reasoning" : "Why this pick?"}
+        {reasoningRequested ? "Hide insight" : "What does the data show?"}
       </button>
     </div>
   );

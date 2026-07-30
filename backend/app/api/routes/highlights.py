@@ -4,9 +4,8 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_ready_snapshot, require_visitor
 from app.api.schemas import ConsensusSnapshot, HighlightsOut, MatchupOut, TopPickOut, variant_key
-from app.config import Settings, get_settings
 from app.core.consensus_engine import CANONICAL_TOP_N, Variant
-from app.core.recommendation import MIN_OPPOSING_WHALES, compute_lean_facts, get_reasoning
+from app.core.recommendation import MIN_OPPOSING_WHALES
 from app.db import repository
 from app.db.session import get_session
 
@@ -48,7 +47,7 @@ def _is_daily_sports(row) -> bool:
     return now - timedelta(hours=12) <= row.end_date <= now + timedelta(hours=36)
 
 
-async def _build_top_picks(matchup_pool: list, settings: Settings, scan_id: int) -> list[TopPickOut]:
+async def _build_top_picks(matchup_pool: list) -> list[TopPickOut]:
     """The 3 "Markets" cards: the highest-volume genuine sports matchups
     happening today — real whale money on both sides, ranked by combined
     dollar value, not by consensus score. `matchup_pool` should be the
@@ -97,9 +96,12 @@ async def _build_top_picks(matchup_pool: list, settings: Settings, scan_id: int)
 
     picks: list[TopPickOut] = []
     for leader, other, _total_volume in selected:
-        facts = compute_lean_facts(leader, other)
-        reasoning = await get_reasoning(settings, scan_id, f"matchup:{leader.id}:{other.id}", facts)
-        picks.append(TopPickOut(kind="matchup", matchup=MatchupOut(leader=leader, other=other, reasoning=reasoning)))
+        # Reasoning is intentionally NOT computed here — it used to be
+        # generated for all 3 cards on every scan cycle regardless of
+        # whether anyone ever looked at them. It's now fetched on demand via
+        # GET /api/consensus/{row_id}/lean only when a visitor actually
+        # clicks "Why this pick?" (see MatchupCard.tsx).
+        picks.append(TopPickOut(kind="matchup", matchup=MatchupOut(leader=leader, other=other)))
 
     return picks
 
@@ -156,14 +158,11 @@ async def _get_daily_catch(snapshot: ConsensusSnapshot):
 
 
 @router.get("/highlights", response_model=HighlightsOut)
-async def get_highlights(
-    snapshot: ConsensusSnapshot = Depends(get_ready_snapshot),
-    settings: Settings = Depends(get_settings),
-) -> HighlightsOut:
+async def get_highlights(snapshot: ConsensusSnapshot = Depends(get_ready_snapshot)) -> HighlightsOut:
     combined_rows = [r for r in snapshot.variants.get(variant_key(Variant.COMBINED, DEFAULT_TOP_N), []) if r.is_active]
     widest_rows = [r for r in snapshot.variants.get(variant_key(Variant.COMBINED, CANONICAL_TOP_N), []) if r.is_active]
 
-    top_picks = await _build_top_picks(widest_rows, settings, snapshot.scan_id)
+    top_picks = await _build_top_picks(widest_rows)
     non_political_rows = [r for r in combined_rows if not _is_political(r.category)]
     most_volume = max(non_political_rows, key=lambda r: r.combined_value, default=None)
 

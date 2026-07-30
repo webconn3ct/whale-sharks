@@ -1,12 +1,16 @@
-"""Mini whale bot: a simulated ($500 starting bankroll) trader that follows
-the same whale-consensus signal the dashboard shows, with real entry/exit
-decisions made from real prices every scan cycle.
+"""Mini whale bot: a simulated (bankroll set by app.db.models.BotState.
+starting_balance, $1000 as of the last reset) trader that follows the same
+whale-consensus signal the dashboard shows, with real entry/exit decisions
+made from real prices every scan cycle.
 
 Design, in order of priority:
 1. ENTRY: whale-consensus data (whale count, consensus_score) is the primary,
    already-backtested quantitative filter — see scripts/backtest_signal.py.
-   Two independent gates can VETO or DOWNSIZE a candidate that already
-   cleared the quantitative bar; neither can independently create a trade:
+   A candidate also has to clear a track-record quality bar (whale count and
+   leaderboard rank reflect total profit and position size, not accuracy —
+   see MIN_BACKING_TRACK_RECORD below) before any gate below even runs. Two
+   independent gates can then VETO or DOWNSIZE it further; neither can
+   independently create a trade:
      - app/core/bot_research.py — live news-research, can veto or downsize
      - app/core/mlb_form.py — MLB cold-recent-form check, downsize only
        (weaker validated effect than the news gate, so it never vetoes
@@ -42,11 +46,20 @@ STAKE_TIERS = (10.0, 25.0, 50.0)
 MAX_CONCURRENT_POSITIONS = 3
 # A hard cap, not a quota — the bot never trades to "catch up" to this
 # number, it only ever trades when a candidate genuinely clears the
-# quantitative bar. This just bounds how much it can do in a bad day.
-MAX_DAILY_ENTRIES = 10
-# Lowered from 15 now that daily entries are capped much lower (10/day max,
+# quantitative bar (and now the track-record quality bar below too). This
+# just bounds how much it can do in a bad day.
+MAX_DAILY_ENTRIES = 5
+# Lowered from 15 now that daily entries are capped much lower (5/day max,
 # often fewer) — waiting for 15 closed trades to check in could take days;
 # checking in every 8 reacts to a bad stretch faster.
+# Whale count and rank alone aren't proof a group is right — a real, if
+# modest, edge over a coinflip on their own recent resolved bets is the bar
+# for "I believe this can make profit." Below this, skip regardless of how
+# large or well-ranked the group is. Requires a few holders with data before
+# trusting the average — a single trader's small sample is too noisy to
+# veto on.
+MIN_BACKING_TRACK_RECORD = 0.45
+MIN_TRACK_RECORD_SAMPLE = 3
 RECALIBRATION_INTERVAL = 8
 RECALIBRATION_LOOKBACK = 20
 # New entries require the snapshot to be this fresh — protects against
@@ -220,6 +233,14 @@ async def _process_entry(
                 continue
             if row.consensus_score < float(state.entry_score_threshold):
                 break  # rows are sorted descending by score — nothing further qualifies
+
+            form, form_sample = avg_recent_form(row)
+            if form is not None and form_sample >= MIN_TRACK_RECORD_SAMPLE and form < MIN_BACKING_TRACK_RECORD:
+                logger.info(
+                    "skipping %s (%s) — backing whales' recent track record too weak: %.0f%% over %d samples",
+                    row.market_title, row.outcome_label, form * 100, form_sample,
+                )
+                continue
 
             stake = _stake_for_score(row.consensus_score, state)
             if cash < stake:

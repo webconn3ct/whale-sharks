@@ -88,7 +88,6 @@ class MatchupOut(BaseModel):
 
     leader: ConsensusRowOut  # higher consensus_score side
     other: ConsensusRowOut  # lower consensus_score side
-    reasoning: str
 
 
 class TopPickOut(BaseModel):

@@ -57,7 +57,6 @@ export interface HealthOut {
 export interface MatchupOut {
   leader: ConsensusRowOut;
   other: ConsensusRowOut;
-  reasoning: string;
 }
 
 export interface TopPickOut {
