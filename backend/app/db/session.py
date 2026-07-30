@@ -16,6 +16,14 @@ def init_engine(settings: Settings) -> None:
     _engine = create_async_engine(
         settings.database_url,
         pool_pre_ping=True,
+        # pgbouncer (transaction mode) can silently drop idle connections
+        # server-side without the client knowing — pool_pre_ping catches most
+        # of that, but not every case. Recycling connections well before any
+        # realistic idle-close window is cheap insurance against a
+        # long-running process holding a connection the pooler has already
+        # killed, which is exactly the kind of failure that would hang or
+        # silently fail with nothing useful logged.
+        pool_recycle=300,
         connect_args={"statement_cache_size": 0},
     )
     _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
