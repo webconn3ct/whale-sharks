@@ -114,6 +114,24 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
       </div>
 
       <div className="relative z-10 w-full max-w-sm">
+        <div className="mb-6 flex flex-col items-center gap-2 text-center sm:hidden">
+          <p className="flex items-start gap-1.5 text-xs text-[var(--text-muted)]">
+            <span className="mt-0.5 shrink-0 text-[var(--accent)]">
+              <StarIcon size={13} />
+            </span>
+            <span>We reveal where the smartest money on Polymarket is moving.</span>
+          </p>
+          <a
+            href="https://www.instagram.com/whalesharkks"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+          >
+            <InstagramIcon size={15} />
+            @whalesharkks
+          </a>
+        </div>
+
         <div className="mb-8 flex flex-col items-center gap-4 text-center">
           <img src="/brand/shark-mark-300.png" alt="Whale Sharkks" className="h-28 w-28 object-contain" />
           <div>
