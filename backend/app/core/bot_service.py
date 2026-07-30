@@ -5,9 +5,12 @@ decisions made from real prices every scan cycle.
 Design, in order of priority:
 1. ENTRY: whale-consensus data (whale count, consensus_score) is the primary,
    already-backtested quantitative filter — see scripts/backtest_signal.py.
-   A live news-research gate (app/core/bot_research.py) can only VETO or
-   DOWNSIZE a candidate that already cleared the quantitative bar; it can
-   never independently create a trade.
+   Two independent gates can VETO or DOWNSIZE a candidate that already
+   cleared the quantitative bar; neither can independently create a trade:
+     - app/core/bot_research.py — live news-research, can veto or downsize
+     - app/core/mlb_form.py — MLB cold-recent-form check, downsize only
+       (weaker validated effect than the news gate, so it never vetoes
+       outright)
 2. EXIT: autonomous each cycle — take profit, cut losses when the whale
    signal has also decayed, or settle when the market resolves/disappears.
 3. LEARNING: no ML training (unreliable at this data volume) — a rule-based
@@ -26,9 +29,11 @@ from app.api.schemas import ConsensusRowOut, ConsensusSnapshot, variant_key
 from app.config import Settings
 from app.core.bot_research import research_gate
 from app.core.consensus_engine import CANONICAL_TOP_N, Variant
+from app.core.mlb_form import cold_favorite_gate
 from app.db import repository
 from app.db.models import BotExitReason
 from app.db.session import get_session
+from app.integrations.mlb_client import MLBClient
 
 logger = logging.getLogger(__name__)
 
@@ -203,65 +208,80 @@ async def _process_entry(
 
     held_conditions = {p.condition_id for p in open_positions}
 
-    for row in rows:
-        if not row.is_active:
-            continue
-        if row.condition_id in held_conditions:
-            continue
-        if row.whale_count < int(state.entry_min_whales):
-            continue
-        if row.consensus_score < float(state.entry_score_threshold):
-            break  # rows are sorted descending by score — nothing further qualifies
-
-        stake = _stake_for_score(row.consensus_score, state)
-        if cash < stake:
-            affordable = [t for t in STAKE_TIERS if t <= cash]
-            if not affordable:
-                continue  # can't afford even the smallest tier — try the next candidate
-            stake = max(affordable)
-
-        verdict = await research_gate(
-            settings, row.market_title, row.outcome_label, row.category, row.whale_count, row.consensus_score
-        )
-        if verdict["verdict"] == "veto":
-            logger.info("bot research gate vetoed %s: %s", row.market_title, verdict["reasoning"])
-            continue
-        if verdict["verdict"] == "downsize":
-            downsized = _downsize(stake)
-            if downsized is None:
-                logger.info("bot research gate downsized %s below minimum stake — skipping", row.market_title)
+    mlb_client = MLBClient()
+    try:
+        for row in rows:
+            if not row.is_active:
                 continue
-            stake = downsized
+            if row.condition_id in held_conditions:
+                continue
+            if row.whale_count < int(state.entry_min_whales):
+                continue
+            if row.consensus_score < float(state.entry_score_threshold):
+                break  # rows are sorted descending by score — nothing further qualifies
 
-        shares = stake / row.current_price if row.current_price > 0 else 0.0
-        if shares <= 0:
-            continue
+            stake = _stake_for_score(row.consensus_score, state)
+            if cash < stake:
+                affordable = [t for t in STAKE_TIERS if t <= cash]
+                if not affordable:
+                    continue  # can't afford even the smallest tier — try the next candidate
+                stake = max(affordable)
 
-        await repository.create_bot_position(
-            session,
-            condition_id=row.condition_id,
-            outcome_index=row.outcome_index,
-            outcome_label=row.outcome_label,
-            market_title=row.market_title,
-            category=row.category,
-            stake=stake,
-            shares=shares,
-            entry_price=row.current_price,
-            entry_at=datetime.now(UTC),
-            entry_consensus_score=row.consensus_score,
-            entry_whale_count=row.whale_count,
-            entry_reasoning=verdict["reasoning"],
-        )
-        await repository.update_bot_state(session, cash_balance=cash - stake)
-        logger.info(
-            "bot opened position on %s (%s): stake=$%.0f score=%.0f whales=%d",
-            row.market_title,
-            row.outcome_label,
-            stake,
-            row.consensus_score,
-            row.whale_count,
-        )
-        return  # at most one new position per cycle
+            verdict = await research_gate(
+                settings, row.market_title, row.outcome_label, row.category, row.whale_count, row.consensus_score
+            )
+            if verdict["verdict"] == "veto":
+                logger.info("bot research gate vetoed %s: %s", row.market_title, verdict["reasoning"])
+                continue
+            reasoning_parts = [verdict["reasoning"]]
+            if verdict["verdict"] == "downsize":
+                downsized = _downsize(stake)
+                if downsized is None:
+                    logger.info("bot research gate downsized %s below minimum stake — skipping", row.market_title)
+                    continue
+                stake = downsized
+
+            mlb_verdict = await cold_favorite_gate(mlb_client, row.market_title, row.outcome_label, row.category)
+            if mlb_verdict is not None:
+                logger.info("MLB cold-favorite gate downsized %s: %s", row.market_title, mlb_verdict["reasoning"])
+                downsized = _downsize(stake)
+                if downsized is None:
+                    logger.info("MLB cold-favorite gate downsized %s below minimum stake — skipping", row.market_title)
+                    continue
+                stake = downsized
+                reasoning_parts.append(mlb_verdict["reasoning"])
+
+            shares = stake / row.current_price if row.current_price > 0 else 0.0
+            if shares <= 0:
+                continue
+
+            await repository.create_bot_position(
+                session,
+                condition_id=row.condition_id,
+                outcome_index=row.outcome_index,
+                outcome_label=row.outcome_label,
+                market_title=row.market_title,
+                category=row.category,
+                stake=stake,
+                shares=shares,
+                entry_price=row.current_price,
+                entry_at=datetime.now(UTC),
+                entry_consensus_score=row.consensus_score,
+                entry_whale_count=row.whale_count,
+                entry_reasoning="\n\n".join(reasoning_parts),
+            )
+            await repository.update_bot_state(session, cash_balance=cash - stake)
+            logger.info(
+                "bot opened position on %s (%s): stake=$%.0f score=%.0f whales=%d",
+                row.market_title,
+                row.outcome_label,
+                stake,
+                row.consensus_score,
+                row.whale_count,
+            )
+            return  # at most one new position per cycle
+    finally:
+        await mlb_client.aclose()
 
 
 async def _recalibrate(session, state) -> None:
