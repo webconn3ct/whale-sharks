@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -39,13 +40,24 @@ async def lifespan(app: FastAPI):
     scheduler = start_scheduler(client, settings)
     app.state.scheduler = scheduler
 
-    # Don't block startup on a full scan — kick it off in the background. If the
-    # cache is still empty, routes return 503 until this completes.
-    initial_scan_task = asyncio.create_task(run_scan(client, settings))
+    # Only catch up with an out-of-band scan if the cache is empty or the
+    # last-good scan is stale — NOT unconditionally on every startup. This used
+    # to fire a full scan on every process restart (deploys, platform-initiated
+    # restarts), which produced off-boundary scans that drifted the cadence away
+    # from the :00/:30 cron schedule and could collide with a cron-triggered run
+    # in flight. The cron job will pick up the next tick on its own otherwise.
+    STARTUP_SCAN_STALENESS = timedelta(minutes=20)
+    needs_catchup_scan = snapshot is None or (
+        snapshot.last_refresh_at is not None and datetime.now(UTC) - snapshot.last_refresh_at > STARTUP_SCAN_STALENESS
+    )
+    initial_scan_task = asyncio.create_task(run_scan(client, settings)) if needs_catchup_scan else None
+    if not needs_catchup_scan:
+        logger.info("cache is fresh enough (last refresh %s) — skipping startup catch-up scan", snapshot.last_refresh_at)
 
     yield
 
-    initial_scan_task.cancel()
+    if initial_scan_task is not None:
+        initial_scan_task.cancel()
     scheduler.shutdown(wait=False)
     await client.aclose()
     await dispose_engine()
