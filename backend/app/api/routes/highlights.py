@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends
 
@@ -35,11 +35,26 @@ def _is_political(category: str | None) -> bool:
     return any(keyword in lowered for keyword in _EXCLUDED_TOP_PICK_KEYWORDS)
 
 
+def _is_daily_sports(row) -> bool:
+    """Strictly "Sports" category (not a keyword guess — the exact tag, so a
+    stray "Esports"/"Motorsport"-style category can't slip through) and
+    scheduled to play within about a day, so the top-3 "Markets" cards read
+    as today's games, not a market that happens to also be tagged sports."""
+    if row.category != "Sports":
+        return False
+    if row.end_date is None:
+        return False
+    now = datetime.now(UTC)
+    return now - timedelta(hours=12) <= row.end_date <= now + timedelta(hours=36)
+
+
 async def _build_top_picks(matchup_pool: list, settings: Settings, scan_id: int) -> list[TopPickOut]:
-    """The 3 "Markets" cards: the highest-volume genuine matchups right now —
-    real whale money on both sides, ranked by combined dollar value, not by
-    consensus score. `matchup_pool` should be the widest available cut so a
-    high-volume market with a merely middling score still surfaces."""
+    """The 3 "Markets" cards: the highest-volume genuine sports matchups
+    happening today — real whale money on both sides, ranked by combined
+    dollar value, not by consensus score. `matchup_pool` should be the
+    widest available cut so a high-volume market with a merely middling
+    score still surfaces. Strictly sports-only — no politics, weather,
+    crypto, or anything else, regardless of volume."""
     by_condition: dict[str, list] = {}
     for r in matchup_pool:
         by_condition.setdefault(r.condition_id, []).append(r)
@@ -48,7 +63,7 @@ async def _build_top_picks(matchup_pool: list, settings: Settings, scan_id: int)
     seen_conditions: set[str] = set()
 
     for row in matchup_pool:
-        if row.condition_id in seen_conditions or _is_political(row.category):
+        if row.condition_id in seen_conditions or not _is_daily_sports(row):
             continue
         siblings = by_condition[row.condition_id]
         opposing = max(
@@ -63,16 +78,7 @@ async def _build_top_picks(matchup_pool: list, settings: Settings, scan_id: int)
         candidates.append((leader, other, leader.combined_value + other.combined_value))
 
     candidates.sort(key=lambda c: c[2], reverse=True)
-
     selected = candidates[:3]
-    # High-volume markets skew heavily toward politics, which can crowd out
-    # every slot — guarantee at least one Sports matchup when one exists,
-    # swapping in for the lowest-volume slot rather than a top one.
-    if selected and not any(c[0].category == "Sports" for c in selected):
-        best_sports = next((c for c in candidates if c[0].category == "Sports"), None)
-        if best_sports is not None:
-            selected = selected[:-1] + [best_sports]
-            selected.sort(key=lambda c: c[2], reverse=True)
 
     picks: list[TopPickOut] = []
     for leader, other, _total_volume in selected:

@@ -112,20 +112,23 @@ body {
   animation-iteration-count: infinite;
 }
 
+/* The shark/fish shapes are drawn head-left, tail-right — moving rightward
+   needs a horizontal flip so the head leads; moving leftward already
+   matches the shape's natural orientation. */
 @keyframes swim-across {
   from {
-    transform: translateX(-20vw);
+    transform: translateX(-20vw) scaleX(-1);
   }
   to {
-    transform: translateX(120vw);
+    transform: translateX(120vw) scaleX(-1);
   }
 }
 
 @keyframes swim-across-reverse {
   from {
-    transform: translateX(120vw) scaleX(-1);
+    transform: translateX(120vw);
   }
   to {
-    transform: translateX(-20vw) scaleX(-1);
+    transform: translateX(-20vw);
   }
 }
