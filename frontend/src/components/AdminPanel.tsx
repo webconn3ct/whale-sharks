@@ -169,9 +169,22 @@ function HotTradersSection() {
             const pct = Math.round(t.recent_form * 100);
             return (
               <div key={t.wallet_address} className="flex items-center gap-3">
-                <div className="w-32 shrink-0 truncate text-sm text-[var(--text-secondary)]" title={t.wallet_address}>
-                  {t.username || `${t.wallet_address.slice(0, 6)}…${t.wallet_address.slice(-4)}`}
-                </div>
+                <a
+                  href={`https://polymarket.com/profile/${t.wallet_address}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="w-36 shrink-0 hover:opacity-80"
+                  title={t.wallet_address}
+                >
+                  <div className="truncate text-sm text-[var(--text-secondary)] underline decoration-dotted underline-offset-2">
+                    {t.username || `${t.wallet_address.slice(0, 6)}…${t.wallet_address.slice(-4)}`}
+                  </div>
+                  {t.best_rank && (
+                    <div className="text-[11px] text-[var(--text-muted)]">
+                      #{t.best_rank} {t.best_rank_timeframe?.toLowerCase()}
+                    </div>
+                  )}
+                </a>
                 <div className="h-5 flex-1 overflow-hidden rounded bg-[var(--bg-page)]">
                   <div
                     className="h-full rounded bg-[var(--accent)]"
@@ -578,7 +591,7 @@ function AccessCodesLog() {
         <input placeholder="code" className={inputClass + " flex-1 min-w-0"} value={code} onChange={(e) => setCode(e.target.value)} />
         <button
           onClick={() => createMutation.mutate()}
-          disabled={!name.trim() || code.trim().length < 4 || createMutation.isPending}
+          disabled={!name.trim() || code.trim().length < 8 || createMutation.isPending}
           className={buttonClass}
         >
           Create

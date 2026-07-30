@@ -181,6 +181,8 @@ export interface HotTraderOut {
   recent_form: number;
   win_rate: number;
   sample_size: number;
+  best_rank: number | null;
+  best_rank_timeframe: string | null;
 }
 
 export interface BotStateOut {

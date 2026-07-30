@@ -4,6 +4,7 @@ separate, shorter-lived admin password that unlocks the admin panel. Tokens
 are signed (itsdangerous) and carried in httpOnly cookies — no session store."""
 
 import hashlib
+import time
 
 import bcrypt
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -14,6 +15,34 @@ from app.config import Settings
 VISITOR_COOKIE = "ws_visitor"
 ADMIN_COOKIE = "ws_admin"
 _SALT = "whale-sharks-auth-v1"
+
+# In-process rate limiting on login attempts — consistent with this app's
+# existing single-instance architecture (same pattern as ConsensusCache).
+# Keyed by "unlock:<ip-hash>" / "admin-login:<ip-hash>" so the two gates
+# are limited independently.
+RATE_LIMIT_MAX_ATTEMPTS = 5
+RATE_LIMIT_WINDOW_SECONDS = 900  # 15 minutes
+_failed_attempts: dict[str, list[float]] = {}
+
+
+def check_rate_limit(key: str) -> bool:
+    """True if this key still has attempts left. Also lazily prunes expired
+    attempt timestamps so the dict doesn't grow unbounded over time."""
+    now = time.time()
+    attempts = [t for t in _failed_attempts.get(key, []) if now - t < RATE_LIMIT_WINDOW_SECONDS]
+    if attempts:
+        _failed_attempts[key] = attempts
+    else:
+        _failed_attempts.pop(key, None)
+    return len(attempts) < RATE_LIMIT_MAX_ATTEMPTS
+
+
+def record_failed_attempt(key: str) -> None:
+    _failed_attempts.setdefault(key, []).append(time.time())
+
+
+def clear_failed_attempts(key: str) -> None:
+    _failed_attempts.pop(key, None)
 
 
 def hash_secret(plain: str) -> str:

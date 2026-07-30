@@ -37,6 +37,11 @@ market's real-world outcome, and must never be phrased as one (no "will win", "i
 list of numbers. Keep it tight enough (well under 40 words) that you never have to cut it short.
 - Output exactly one sentence, no preamble, no quotation marks."""
 
+# This prompt never changes — a perfect prompt-caching candidate. Cached
+# once, every subsequent call (there can be several per scan cycle, one per
+# matchup) reuses it instead of re-billing full price each time.
+SYSTEM_BLOCKS = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+
 
 def _avg_best_rank(row: ConsensusRowOut) -> float | None:
     if not row.holders:
@@ -98,7 +103,7 @@ async def phrase_reasoning(settings: Settings, facts: dict) -> str:
         response = await client.messages.create(
             model="claude-opus-5",
             max_tokens=300,
-            system=SYSTEM_PROMPT,
+            system=SYSTEM_BLOCKS,
             messages=[{"role": "user", "content": str(facts)}],
         )
     except Exception:

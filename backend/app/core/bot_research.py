@@ -44,6 +44,10 @@ RESEARCH_SCHEMA = {
 
 DEFAULT_VERDICT = {"verdict": "confirm", "reasoning": "News research unavailable — proceeding on whale signal alone."}
 
+# Static prompt — cache it so a repeat call within the cache window doesn't
+# re-bill full price for it.
+RESEARCH_SYSTEM_BLOCKS = [{"type": "text", "text": RESEARCH_SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+
 
 async def research_gate(
     settings: Settings,
@@ -77,7 +81,7 @@ async def research_gate(
         response = await client.messages.create(
             model="claude-opus-5",
             max_tokens=1024,
-            system=RESEARCH_SYSTEM_PROMPT,
+            system=RESEARCH_SYSTEM_BLOCKS,
             tools=[{"type": "web_search_20260209", "name": "web_search"}],
             output_config={"format": {"type": "json_schema", "schema": RESEARCH_SCHEMA}},
             messages=[{"role": "user", "content": prompt}],

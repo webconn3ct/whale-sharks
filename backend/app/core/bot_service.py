@@ -38,8 +38,11 @@ MAX_CONCURRENT_POSITIONS = 3
 # number, it only ever trades when a candidate genuinely clears the
 # quantitative bar. This just bounds how much it can do in a bad day.
 MAX_DAILY_ENTRIES = 10
-RECALIBRATION_INTERVAL = 15
-RECALIBRATION_LOOKBACK = 30
+# Lowered from 15 now that daily entries are capped much lower (10/day max,
+# often fewer) — waiting for 15 closed trades to check in could take days;
+# checking in every 8 reacts to a bad stretch faster.
+RECALIBRATION_INTERVAL = 8
+RECALIBRATION_LOOKBACK = 20
 # New entries require the snapshot to be this fresh — protects against
 # opening a position on a line that's since moved.
 ENTRY_MAX_STALENESS = timedelta(minutes=5)

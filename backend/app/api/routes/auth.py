@@ -3,7 +3,17 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import require_admin
 from app.config import Settings, get_settings
-from app.core.auth import ADMIN_COOKIE, VISITOR_COOKIE, client_ip_hash, create_token, verify_secret, verify_token
+from app.core.auth import (
+    ADMIN_COOKIE,
+    VISITOR_COOKIE,
+    check_rate_limit,
+    clear_failed_attempts,
+    client_ip_hash,
+    create_token,
+    record_failed_attempt,
+    verify_secret,
+    verify_token,
+)
 from app.db import repository
 from app.db.session import get_session
 
@@ -37,10 +47,15 @@ def _set_cookie(response: Response, name: str, token: str, max_age_seconds: int,
 
 @router.post("/unlock")
 async def unlock(body: UnlockRequest, request: Request, response: Response, settings: Settings = Depends(get_settings)):
+    rate_key = f"unlock:{client_ip_hash(settings, request)}"
+    if not check_rate_limit(rate_key):
+        raise HTTPException(status_code=429, detail="Too many attempts — try again in a few minutes")
     async with get_session() as session:
         code_valid = await repository.verify_any_access_code(session, body.code)
     if not code_valid:
+        record_failed_attempt(rate_key)
         raise HTTPException(status_code=401, detail="Incorrect access code")
+    clear_failed_attempts(rate_key)
     token = create_token(settings, role="visitor")
     _set_cookie(response, VISITOR_COOKIE, token, settings.visitor_session_days * 86400, settings)
     async with get_session() as session:
@@ -50,10 +65,15 @@ async def unlock(body: UnlockRequest, request: Request, response: Response, sett
 
 @router.post("/admin-login")
 async def admin_login(body: AdminLoginRequest, request: Request, response: Response, settings: Settings = Depends(get_settings)):
+    rate_key = f"admin-login:{client_ip_hash(settings, request)}"
+    if not check_rate_limit(rate_key):
+        raise HTTPException(status_code=429, detail="Too many attempts — try again in a few minutes")
     async with get_session() as session:
         config = await repository.get_app_config(session)
     if config is None or not verify_secret(body.password, config.admin_password_hash):
+        record_failed_attempt(rate_key)
         raise HTTPException(status_code=401, detail="Incorrect admin password")
+    clear_failed_attempts(rate_key)
     token = create_token(settings, role="admin")
     _set_cookie(response, ADMIN_COOKIE, token, settings.admin_session_hours * 3600, settings)
     # Admin implies visitor access too, so the dashboard behind them unlocks as well.

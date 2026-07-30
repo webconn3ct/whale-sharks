@@ -263,7 +263,9 @@ async def unexclude_trader(wallet_address: str):
 
 class CreateAccessCodeIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    code: str = Field(min_length=4, max_length=64)
+    # 4 chars was too weak against a determined guesser even with rate
+    # limiting in place — 8 gives real entropy without being a hassle to type.
+    code: str = Field(min_length=8, max_length=64)
 
 
 class AccessCodeOut(BaseModel):
@@ -369,6 +371,8 @@ class HotTraderOut(BaseModel):
     recent_form: float
     win_rate: float
     sample_size: int
+    best_rank: int | None
+    best_rank_timeframe: str | None
 
 
 @router.get("/hot-traders", response_model=list[HotTraderOut])

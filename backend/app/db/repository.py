@@ -834,6 +834,9 @@ async def acknowledge_signup(session: AsyncSession, signup_id: int) -> None:
 # --- admin: hot-streak traders --------------------------------------------------
 
 
+_TIMEFRAME_QUALITY = {"ALL": 4, "MONTH": 3, "WEEK": 2, "DAY": 1}
+
+
 async def get_hot_traders(session: AsyncSession, limit: int = 5, min_sample: int = 3) -> list[dict]:
     """Top traders by recent form (win rate over their last ~10 resolved
     positions) — real Polymarket-reported outcomes, not a guess. Restricted
@@ -850,6 +853,7 @@ async def get_hot_traders(session: AsyncSession, limit: int = 5, min_sample: int
 
     result = await session.execute(
         select(
+            TraderModel.id,
             TraderModel.username,
             TraderModel.wallet_address,
             TraderTrackRecord.recent_form,
@@ -861,6 +865,25 @@ async def get_hot_traders(session: AsyncSession, limit: int = 5, min_sample: int
         .order_by(TraderTrackRecord.recent_form.desc())
         .limit(limit)
     )
+    rows = result.all()
+    if not rows:
+        return []
+
+    trader_ids = [r[0] for r in rows]
+    rank_result = await session.execute(
+        select(TraderLeaderboardRank.trader_id, TraderLeaderboardRank.timeframe, TraderLeaderboardRank.rank).where(
+            TraderLeaderboardRank.scan_id == latest_scan_id, TraderLeaderboardRank.trader_id.in_(trader_ids)
+        )
+    )
+    # Best rank per trader = highest-quality timeframe first, ties broken by
+    # the lowest (best) rank — mirrors consensus_engine.Trader.best_rank().
+    best_rank_by_trader: dict[int, tuple[str, int]] = {}
+    for trader_id, timeframe, rank in rank_result.all():
+        tf_value = timeframe.value if hasattr(timeframe, "value") else str(timeframe)
+        current = best_rank_by_trader.get(trader_id)
+        if current is None or (_TIMEFRAME_QUALITY[tf_value], -rank) > (_TIMEFRAME_QUALITY[current[0]], -current[1]):
+            best_rank_by_trader[trader_id] = (tf_value, rank)
+
     return [
         {
             "username": username,
@@ -868,8 +891,10 @@ async def get_hot_traders(session: AsyncSession, limit: int = 5, min_sample: int
             "recent_form": float(recent_form),
             "win_rate": float(win_rate),
             "sample_size": sample_size,
+            "best_rank": best_rank_by_trader[trader_id][1] if trader_id in best_rank_by_trader else None,
+            "best_rank_timeframe": best_rank_by_trader[trader_id][0] if trader_id in best_rank_by_trader else None,
         }
-        for username, wallet_address, recent_form, win_rate, sample_size in result.all()
+        for trader_id, username, wallet_address, recent_form, win_rate, sample_size in rows
     ]
 
 

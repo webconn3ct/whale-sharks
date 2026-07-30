@@ -271,13 +271,19 @@ async def chat(body: ChatRequest, settings: Settings = Depends(get_settings)) ->
     messages.append({"role": "user", "content": body.message})
 
     system_prompt = f"{BASE_SYSTEM_PROMPT}\n\n{await _top_picks_context(settings)}\n\n{await _bot_context_block()}"
+    # cache_control turns this into a real prompt-caching breakpoint — the
+    # system prompt (which includes the full instructions plus the current
+    # scan's context) is identical across every message in a conversation
+    # and across different visitors within the same ~5min cache window, so
+    # this avoids re-billing full price for it on every single turn.
+    system_blocks = [{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}]
 
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
     try:
         response = await client.messages.create(
             model="claude-opus-5",
             max_tokens=1024,
-            system=system_prompt,
+            system=system_blocks,
             tools=[FLAG_FOR_ADMIN_HELP_TOOL],
             messages=messages,
         )
@@ -307,7 +313,7 @@ async def chat(body: ChatRequest, settings: Settings = Depends(get_settings)) ->
         followup = await client.messages.create(
             model="claude-opus-5",
             max_tokens=1024,
-            system=system_prompt,
+            system=system_blocks,
             tools=[FLAG_FOR_ADMIN_HELP_TOOL],
             messages=messages,
         )
