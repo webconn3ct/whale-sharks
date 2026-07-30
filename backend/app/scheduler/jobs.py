@@ -22,7 +22,7 @@ def start_scheduler(client: PolymarketClient, settings: Settings) -> AsyncIOSche
         # time in between — the scan-lock (try_acquire_scan_lock) already
         # makes concurrent scans safely no-op rather than collide, so the
         # scheduled run still happens on its normal cadence regardless.
-        trigger=CronTrigger(minute="0,30"),
+        trigger=CronTrigger(minute="0,30", hour="9-23", timezone="America/New_York"),
         args=[client, settings],
         id=SCAN_JOB_ID,
         max_instances=1,
@@ -30,5 +30,5 @@ def start_scheduler(client: PolymarketClient, settings: Settings) -> AsyncIOSche
         misfire_grace_time=60,
     )
     scheduler.start()
-    logger.info("scheduler started: scan at :00 and :30 every hour")
+    logger.info("scheduler started: scan at :00 and :30, 9am-midnight America/New_York")
     return scheduler
