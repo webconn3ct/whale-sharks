@@ -25,7 +25,7 @@ export function SummaryMetrics({ summary, isLoading }: { summary: SummaryOut | u
     { label: "Consensus markets", value: summary ? formatCompactNumber(summary.consensus_markets) : "—", accent: true },
     { label: "Total whale exposure", value: summary ? formatCompactCurrency(summary.total_whale_exposure) : "—" },
     {
-      label: "Last refresh",
+      label: "Last scan",
       value: summary ? formatRelativeTime(summary.last_refresh_at) : isLoading ? "loading…" : "—",
     },
   ];

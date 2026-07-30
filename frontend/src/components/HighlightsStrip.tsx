@@ -145,7 +145,7 @@ export function HighlightsStrip({
   if (!highlights) return null;
 
   return (
-    <div className="mb-6">
+    <div>
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
         Whale spotlight
       </h2>

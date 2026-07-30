@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 
@@ -13,6 +14,12 @@ router = APIRouter(dependencies=[Depends(require_visitor)])
 
 DEFAULT_TOP_N = 25
 _TIMEFRAME_VARIANTS = [Variant.WEEK, Variant.MONTH, Variant.ALL_TIME]
+
+EASTERN = ZoneInfo("America/New_York")
+# A pick made with only a couple hours of the day left isn't a meaningful
+# "catch of the day" — if nothing's been picked by this hour, just show none
+# rather than one that barely got a chance to prove out.
+DAILY_CATCH_CUTOFF_HOUR = 17
 
 # Every whale-spotlight slot (all 5 boxes, not just the 3 "Markets" cards)
 # deliberately stays off politics/geopolitics — it's the single biggest
@@ -107,23 +114,30 @@ async def _build_top_picks(matchup_pool: list) -> list[TopPickOut]:
 
 
 async def _get_daily_catch(snapshot: ConsensusSnapshot):
-    """The "Daily Catch" card is picked once per calendar day (UTC) — highest
-    whale rating in the DAY variant at pick time — and locked there for the
-    rest of the day instead of being able to flip on every 15-minute scan.
+    """The "Daily Catch" card is picked once per calendar day (America/New_York)
+    — highest whale rating in the DAY variant at pick time — and locked there
+    for the rest of the day instead of being able to flip on every scan.
     Concurrent requests can't create duplicate picks for the same day (a
     unique constraint + re-fetch-after-insert resolves any race).
 
     Exception to the lock: if the current pick has since resolved (or its
     price already hit 0%/100%, per ConsensusRowOut.is_active), it's re-rolled
     to today's next-best still-active candidate — a finished market sitting
-    in the spotlight for the rest of the day isn't useful."""
-    today = datetime.now(UTC).date()
+    in the spotlight for the rest of the day isn't useful. Both the initial
+    pick and any re-roll respect DAILY_CATCH_CUTOFF_HOUR (America/New_York):
+    with no pick locked in by then, or a resolution after that hour, there's
+    no daily catch for the rest of that day rather than a token late pick."""
+    now_eastern = datetime.now(EASTERN)
+    today = now_eastern.date()  # Eastern calendar day, matching the cutoff's own timezone
+    before_cutoff = now_eastern.hour < DAILY_CATCH_CUTOFF_HOUR
     wide_day_rows = snapshot.variants.get(variant_key(Variant.DAY, CANONICAL_TOP_N), [])
 
     async with get_session() as session:
         pick = await repository.get_daily_catch_pick(session, today)
 
         if pick is None:
+            if not before_cutoff:
+                return None  # too late in the day to start a fresh pick
             day_rows = [
                 r for r in snapshot.variants.get(variant_key(Variant.DAY, DEFAULT_TOP_N), [])
                 if r.is_active and not _is_political(r.category)
@@ -142,6 +156,8 @@ async def _get_daily_catch(snapshot: ConsensusSnapshot):
         )
 
         if current is not None and not current.is_active:
+            if not before_cutoff:
+                return None  # resolved after cutoff — too late to re-roll, show nothing rather than a dead pick
             day_rows = [
                 r for r in snapshot.variants.get(variant_key(Variant.DAY, DEFAULT_TOP_N), [])
                 if r.is_active and not _is_political(r.category)

@@ -102,7 +102,7 @@ export function BotSection() {
   };
 
   return (
-    <div className="mb-6 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-page)] p-4">
+    <div className="rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-page)] p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="flex items-center gap-1.5 text-sm font-semibold text-[var(--text-primary)]">
