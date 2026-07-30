@@ -572,6 +572,16 @@ async def list_recent_scans(session: AsyncSession, limit: int = 20) -> list[Scan
     return list(result.scalars().all())
 
 
+async def get_last_completed_scan_at(session: AsyncSession) -> datetime | None:
+    """Cheap staleness check for the scan watchdog — just the timestamp, not
+    the full snapshot (load_latest_snapshot does real work re-hydrating every
+    consensus row/trader, overkill for a check that runs every few minutes)."""
+    result = await session.execute(
+        select(Scan.completed_at).where(Scan.status == ScanStatus.COMPLETED).order_by(Scan.completed_at.desc()).limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 def parse_market_date(value: str | None) -> datetime | None:
     if not value:
         return None
