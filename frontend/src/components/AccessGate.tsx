@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { OceanScene } from "./OceanScene";
+import { InstagramIcon } from "./InstagramIcon";
 import { submitSignup, unlock } from "../lib/api";
+
+function StarIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M12 2.5l2.6 6.3 6.8.5-5.2 4.4 1.7 6.6L12 16.9l-5.9 3.4 1.7-6.6-5.2-4.4 6.8-.5L12 2.5z" />
+    </svg>
+  );
+}
 
 function SignupBox() {
   const [contact, setContact] = useState("");
@@ -85,6 +94,24 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
       >
         Admin
       </a>
+
+      <div className="absolute left-6 top-6 z-10 hidden max-w-[260px] flex-col gap-2 sm:flex">
+        <p className="flex items-start gap-1.5 text-xs text-[var(--text-muted)]">
+          <span className="mt-0.5 shrink-0 text-[var(--accent)]">
+            <StarIcon size={13} />
+          </span>
+          <span>We reveal where the smartest money on Polymarket is moving.</span>
+        </p>
+        <a
+          href="https://www.instagram.com/whalesharkks"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+        >
+          <InstagramIcon size={15} />
+          @whalesharkks
+        </a>
+      </div>
 
       <div className="relative z-10 w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-4 text-center">
