@@ -2,7 +2,7 @@ import logging
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -394,7 +394,14 @@ async def load_latest_snapshot(session: AsyncSession) -> ConsensusSnapshot | Non
             continue
 
         variant = Variant(cp.variant.value)
-        is_active = bool(market.active) and (market.end_date is None or market.end_date > now)
+        # A market whose price has already converged to (effectively) 0% or
+        # 100% is done in every way that matters, even if Gamma's `active`
+        # flag / end_date metadata hasn't caught up yet (up to a 24h TTL) —
+        # same 0.5%/99.5% band the UI itself rounds to those displayed
+        # percentages, so "shows 100% on screen" and "counted as finished"
+        # never disagree.
+        price_resolved = float(cp.current_price) <= 0.005 or float(cp.current_price) >= 0.995
+        is_active = bool(market.active) and (market.end_date is None or market.end_date > now) and not price_resolved
 
         for top_n in TOP_N_OPTIONS:
             if top_n == CANONICAL_TOP_N:
@@ -915,4 +922,16 @@ async def create_daily_catch_pick(session: AsyncSession, pick_date: date, condit
     )
     stmt = stmt.on_conflict_do_nothing(index_elements=[DailyCatchPick.pick_date])
     await session.execute(stmt)
+    await session.commit()
+
+
+async def update_daily_catch_pick(session: AsyncSession, pick_date: date, condition_id: str, outcome_index: int) -> None:
+    """Re-roll an already-locked pick — used when the current pick has
+    resolved (or its price already hit 0%/100%) partway through the day,
+    so the spotlight doesn't keep showing a finished market."""
+    await session.execute(
+        update(DailyCatchPick)
+        .where(DailyCatchPick.pick_date == pick_date)
+        .values(condition_id=condition_id, outcome_index=outcome_index, picked_at=datetime.now(UTC))
+    )
     await session.commit()

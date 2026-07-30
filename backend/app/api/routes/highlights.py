@@ -109,8 +109,15 @@ async def _get_daily_catch(snapshot: ConsensusSnapshot):
     whale rating in the DAY variant at pick time — and locked there for the
     rest of the day instead of being able to flip on every 15-minute scan.
     Concurrent requests can't create duplicate picks for the same day (a
-    unique constraint + re-fetch-after-insert resolves any race)."""
+    unique constraint + re-fetch-after-insert resolves any race).
+
+    Exception to the lock: if the current pick has since resolved (or its
+    price already hit 0%/100%, per ConsensusRowOut.is_active), it's re-rolled
+    to today's next-best still-active candidate — a finished market sitting
+    in the spotlight for the rest of the day isn't useful."""
     today = datetime.now(UTC).date()
+    wide_day_rows = snapshot.variants.get(variant_key(Variant.DAY, CANONICAL_TOP_N), [])
+
     async with get_session() as session:
         pick = await repository.get_daily_catch_pick(session, today)
 
@@ -127,11 +134,25 @@ async def _get_daily_catch(snapshot: ConsensusSnapshot):
             if pick is None:
                 return best
 
-    wide_day_rows = snapshot.variants.get(variant_key(Variant.DAY, CANONICAL_TOP_N), [])
-    return next(
-        (r for r in wide_day_rows if r.condition_id == pick.condition_id and r.outcome_index == pick.outcome_index),
-        None,
-    )
+        current = next(
+            (r for r in wide_day_rows if r.condition_id == pick.condition_id and r.outcome_index == pick.outcome_index),
+            None,
+        )
+
+        if current is not None and not current.is_active:
+            day_rows = [
+                r for r in snapshot.variants.get(variant_key(Variant.DAY, DEFAULT_TOP_N), [])
+                if r.is_active and not _is_political(r.category)
+            ]
+            if day_rows:
+                best = max(day_rows, key=lambda r: r.consensus_score)
+                await repository.update_daily_catch_pick(session, today, best.condition_id, best.outcome_index)
+                current = next(
+                    (r for r in wide_day_rows if r.condition_id == best.condition_id and r.outcome_index == best.outcome_index),
+                    best,
+                )
+
+    return current
 
 
 @router.get("/highlights", response_model=HighlightsOut)
