@@ -16,6 +16,9 @@ function HolderRow({ holder }: { holder: HolderOut }) {
           {TIMEFRAME_LABEL[holder.best_timeframe]} #{holder.best_rank}
         </span>
       </td>
+      <td className="px-3 py-2.5 text-right tabular-nums text-[var(--text-secondary)]">
+        {holder.recent_form !== null ? formatPercent(holder.recent_form * 100, 0) : "—"}
+      </td>
       <td className="px-3 py-2.5 text-right tabular-nums">{formatCurrency(holder.position_value)}</td>
       <td className="px-3 py-2.5 text-right tabular-nums text-[var(--text-secondary)]">
         {formatProbability(holder.avg_entry_price)}
@@ -106,6 +109,9 @@ export function MarketDetailDrawer({
               <tr className="border-b border-[var(--border-hairline)] bg-[var(--bg-surface)] text-left text-xs uppercase tracking-wide text-[var(--text-muted)]">
                 <th className="px-3 py-2.5">Trader</th>
                 <th className="px-3 py-2.5">Leaderboard</th>
+                <th className="px-3 py-2.5 text-right" title="Win rate on this trader's own last ~10 resolved Polymarket positions">
+                  Recent form
+                </th>
                 <th className="px-3 py-2.5 text-right">Position value</th>
                 <th className="px-3 py-2.5 text-right">Entry</th>
                 <th className="px-3 py-2.5 text-right">Current</th>

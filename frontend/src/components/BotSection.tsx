@@ -75,7 +75,7 @@ function BotSummary({ state }: { state: BotStateOut | undefined }) {
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <StatTile label="Total value" value={formatCurrency(state.total_value)} tone="accent" />
       <StatTile
-        label="Return since $500 start"
+        label={`Return since $${Math.round(state.starting_balance)} start`}
         value={`${returnPct >= 0 ? "+" : ""}${formatPercent(returnPct)}`}
         tone={returnPct >= 0 ? "good" : "critical"}
       />
@@ -110,8 +110,9 @@ export function BotSection() {
             KrillBot
           </h2>
           <p className="text-xs text-[var(--text-muted)]">
-            Our simulated trading bot — testing the whale-consensus strategy live with a hypothetical $500. Not
-            real money, not investment advice.
+            Our simulated trading bot — testing the whale-consensus strategy live with a hypothetical $
+            {stateQuery.data ? Math.round(stateQuery.data.starting_balance) : 1000}. Not real money, not investment
+            advice.
           </p>
         </div>
         {stateQuery.data?.last_recalibrated_at && (

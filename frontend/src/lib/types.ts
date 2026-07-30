@@ -17,6 +17,8 @@ export interface HolderOut {
   current_price: number;
   cash_pnl: number;
   percent_pnl: number;
+  win_rate: number | null;
+  recent_form: number | null;
 }
 
 export interface ConsensusRowOut {

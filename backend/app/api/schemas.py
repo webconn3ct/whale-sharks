@@ -25,6 +25,11 @@ class HolderOut(BaseModel):
     current_price: float
     cash_pnl: float
     percent_pnl: float
+    # Shrunk hit-rate on this trader's own resolved Polymarket positions —
+    # None until they have at least one resolved position on record. Distinct
+    # from leaderboard rank (which reflects total PnL, not accuracy).
+    win_rate: float | None = None
+    recent_form: float | None = None
 
 
 class ConsensusRowOut(BaseModel):

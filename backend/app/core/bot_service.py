@@ -30,6 +30,7 @@ from app.config import Settings
 from app.core.bot_research import research_gate
 from app.core.consensus_engine import CANONICAL_TOP_N, Variant
 from app.core.mlb_form import cold_favorite_gate
+from app.core.recommendation import avg_recent_form
 from app.db import repository
 from app.db.models import BotExitReason
 from app.db.session import get_session
@@ -234,6 +235,17 @@ async def _process_entry(
                 logger.info("bot research gate vetoed %s: %s", row.market_title, verdict["reasoning"])
                 continue
             reasoning_parts = [verdict["reasoning"]]
+            form, form_sample = avg_recent_form(row)
+            if form is not None:
+                # Track record is already baked into consensus_score (see
+                # trader_weight/track_record_multiplier) — this just makes
+                # that visible in the trade log instead of implicit. Whale
+                # count alone isn't proof of anything; a strong or weak
+                # recent hit rate on this specific group is real signal.
+                reasoning_parts.append(
+                    f"Backing whales' own recent track record: {form:.0%} win rate across {form_sample} "
+                    f"resolved-position samples."
+                )
             if verdict["verdict"] == "downsize":
                 downsized = _downsize(stake)
                 if downsized is None:

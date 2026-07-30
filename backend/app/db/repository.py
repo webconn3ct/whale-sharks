@@ -349,6 +349,26 @@ def _qualifies_for_cut(ranks: dict[str, int], variant: Variant, top_n: int) -> b
     return rank is not None and rank <= top_n
 
 
+def _holder_out(t, track_record_by_trader: dict[int, tuple[float, float]]) -> HolderOut:
+    track_record = track_record_by_trader.get(t.trader_id)
+    return HolderOut(
+        wallet=t.trader.wallet_address,
+        username=t.trader.username,
+        profile_image=t.trader.profile_image,
+        verified=t.trader.verified,
+        best_timeframe=t.best_timeframe,
+        best_rank=t.best_rank,
+        position_value=float(t.position_value),
+        size=float(t.size),
+        avg_entry_price=float(t.avg_entry_price),
+        current_price=float(t.current_price),
+        cash_pnl=float(t.cash_pnl),
+        percent_pnl=float(t.percent_pnl),
+        win_rate=track_record[0] if track_record else None,
+        recent_form=track_record[1] if track_record else None,
+    )
+
+
 async def load_latest_snapshot(session: AsyncSession) -> ConsensusSnapshot | None:
     scan_row = await session.execute(
         select(Scan).where(Scan.status == ScanStatus.COMPLETED).order_by(Scan.completed_at.desc()).limit(1)
@@ -382,6 +402,13 @@ async def load_latest_snapshot(session: AsyncSession) -> ConsensusSnapshot | Non
     ranks_by_trader: dict[int, dict[str, int]] = defaultdict(dict)
     for trader_id, timeframe, rank in ranks_result.all():
         ranks_by_trader[trader_id][timeframe.value] = rank
+
+    track_records_result = await session.execute(
+        select(TraderTrackRecord.trader_id, TraderTrackRecord.win_rate, TraderTrackRecord.recent_form)
+    )
+    track_record_by_trader: dict[int, tuple[float, float]] = {
+        trader_id: (float(win_rate), float(recent_form)) for trader_id, win_rate, recent_form in track_records_result.all()
+    }
 
     now = datetime.now(UTC)
     variants: dict[str, list[ConsensusRowOut]] = {}
@@ -433,23 +460,7 @@ async def load_latest_snapshot(session: AsyncSession) -> ConsensusSnapshot | Non
                 whale_count=len(filtered),
                 combined_value=combined_value,
                 consensus_score=consensus_score,
-                holders=[
-                    HolderOut(
-                        wallet=t.trader.wallet_address,
-                        username=t.trader.username,
-                        profile_image=t.trader.profile_image,
-                        verified=t.trader.verified,
-                        best_timeframe=t.best_timeframe,
-                        best_rank=t.best_rank,
-                        position_value=float(t.position_value),
-                        size=float(t.size),
-                        avg_entry_price=float(t.avg_entry_price),
-                        current_price=float(t.current_price),
-                        cash_pnl=float(t.cash_pnl),
-                        percent_pnl=float(t.percent_pnl),
-                    )
-                    for t in filtered
-                ],
+                holders=[_holder_out(t, track_record_by_trader) for t in filtered],
             )
             key = variant_key(variant, top_n)
             variants.setdefault(key, []).append(row)
