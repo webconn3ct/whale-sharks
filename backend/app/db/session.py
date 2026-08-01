@@ -24,6 +24,13 @@ def init_engine(settings: Settings) -> None:
         # killed, which is exactly the kind of failure that would hang or
         # silently fail with nothing useful logged.
         pool_recycle=300,
+        # SQLAlchemy's default (5 + 10 overflow = 15) was sized back when far
+        # fewer endpoints touched the DB per page load — the admin panel
+        # alone now fires a dozen-plus concurrent queries on mount, plus the
+        # login page's teaser. Explicit headroom so a burst of concurrent
+        # page loads queues for a connection less often.
+        pool_size=10,
+        max_overflow=20,
         connect_args={"statement_cache_size": 0},
     )
     _session_factory = async_sessionmaker(_engine, expire_on_commit=False)
