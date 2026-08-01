@@ -189,7 +189,7 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
 
       <a
         href="/admin"
-        className="absolute right-6 top-6 z-10 rounded-md border border-[var(--border-hairline)] px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)]"
+        className="absolute right-6 top-6 z-10 hidden rounded-md border border-[var(--border-hairline)] px-3 py-1.5 text-xs text-[var(--text-muted)] transition-colors hover:border-[var(--accent)] hover:text-[var(--text-primary)] sm:block"
       >
         Admin
       </a>
