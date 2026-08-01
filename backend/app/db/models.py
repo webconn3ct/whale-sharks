@@ -163,6 +163,11 @@ class ConsensusPositionTrader(Base):
     # trader_weight at scan time — lets smaller top-N cuts be re-scored from
     # this stored (top_n=100) data without re-fetching track records.
     trader_weight: Mapped[float] = mapped_column(Numeric(18, 6))
+    # This trader's dollar value on OTHER outcomes of this same market at
+    # scan time, if any — NULL when they hold only this side. trader_weight
+    # above is already hedge-discounted; this is just for display (surfaced
+    # in lean text / bot reasoning).
+    hedge_opposing_value: Mapped[float | None] = mapped_column(Numeric(18, 6))
 
     consensus_position: Mapped["ConsensusPosition"] = relationship(back_populates="traders")
     trader: Mapped["Trader"] = relationship()

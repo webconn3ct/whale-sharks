@@ -39,6 +39,11 @@ so the reader can weigh it themselves. Do NOT declare a winner, do NOT use words
 "the better bet", and do NOT imply one side is recommended over the other. If the whale-count side and the \
 track-record side disagree, say that tension plainly instead of resolving it for the reader — e.g. more whales \
 on one side but a stronger recent track record on the other.
+- `notable_hedge` (when not null) means the named trader ALSO holds a real position on the other outcome(s) of \
+this same market with a different amount — e.g. more on the over than the under. That's a genuine hedge, not a \
+confident vote, and a whale count/score already discounts it accordingly — when notable_hedge is present and \
+meaningfully changes the picture (especially a highly-ranked or otherwise notable trader), say so plainly with \
+the actual numbers, the same way you'd cite track record. Don't mention it when hedged_whale_count is 0.
 - Describe what the whale data currently shows, never what will happen — this is NOT a prediction of the \
 market's real-world outcome, and must never be phrased as one (no "will win", "is likely to happen", etc.).
 - You have live web search available. If there's a clear, current, specific news item about this exact \
@@ -74,8 +79,26 @@ def avg_recent_form(row: ConsensusRowOut) -> tuple[float | None, int]:
     return sum(values) / len(values), len(values)
 
 
+def notable_hedge(row: ConsensusRowOut) -> dict | None:
+    """The single largest hedged position on this side, if any — a trader
+    also holding OTHER outcomes of this same market with real money, not
+    just a full-conviction bet. Ranked by combined exposure (both sides)
+    so a whale's biggest real hedge surfaces, not a token position."""
+    hedged = [h for h in row.holders if h.hedge_opposing_value is not None and h.hedge_opposing_value > 0]
+    if not hedged:
+        return None
+    top = max(hedged, key=lambda h: h.position_value + (h.hedge_opposing_value or 0))
+    return {
+        "trader_label": top.username or f"a wallet ending {top.wallet[-4:]}",
+        "leaderboard_rank": top.best_rank,
+        "this_side_value_usd": round(top.position_value, 2),
+        "opposing_side_value_usd": round(top.hedge_opposing_value, 2),
+    }
+
+
 def _outcome_facts(row: ConsensusRowOut) -> dict:
     avg_form, form_sample = avg_recent_form(row)
+    hedged_count = sum(1 for h in row.holders if h.hedge_opposing_value is not None and h.hedge_opposing_value > 0)
     return {
         "outcome_label": row.outcome_label,
         "whale_count": row.whale_count,
@@ -84,6 +107,8 @@ def _outcome_facts(row: ConsensusRowOut) -> dict:
         "consensus_score": round(row.consensus_score, 1),
         "avg_recent_win_rate": round(avg_form * 100, 1) if avg_form is not None else None,
         "recent_win_rate_sample_count": form_sample,
+        "hedged_whale_count": hedged_count,
+        "notable_hedge": notable_hedge(row),
     }
 
 
@@ -98,7 +123,13 @@ def compute_lean_facts(primary: ConsensusRowOut, opposing: ConsensusRowOut | Non
 def _describe_side(f: dict) -> str:
     rank_part = f", avg rank #{f['avg_leaderboard_rank']:.0f}" if f["avg_leaderboard_rank"] else ""
     form_part = f", {f['avg_recent_win_rate']:.0f}% recent win rate" if f["avg_recent_win_rate"] is not None else ""
-    return f"{f['whale_count']} whales{rank_part}{form_part} on {f['outcome_label']}"
+    hedge = f["notable_hedge"]
+    hedge_part = (
+        f" (incl. {hedge['trader_label']}, also holding ${hedge['opposing_side_value_usd']:,.0f} on the other side)"
+        if hedge
+        else ""
+    )
+    return f"{f['whale_count']} whales{rank_part}{form_part} on {f['outcome_label']}{hedge_part}"
 
 
 def render_template(facts: dict) -> str:

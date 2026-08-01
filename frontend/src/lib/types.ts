@@ -19,6 +19,7 @@ export interface HolderOut {
   percent_pnl: number;
   win_rate: number | null;
   recent_form: number | null;
+  hedge_opposing_value: number | null;
 }
 
 export interface ConsensusRowOut {

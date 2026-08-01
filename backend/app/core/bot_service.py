@@ -34,7 +34,7 @@ from app.config import Settings
 from app.core.bot_research import research_gate
 from app.core.consensus_engine import CANONICAL_TOP_N, Variant
 from app.core.mlb_form import cold_favorite_gate
-from app.core.recommendation import avg_recent_form
+from app.core.recommendation import avg_recent_form, notable_hedge
 from app.db import repository
 from app.db.models import BotExitReason
 from app.db.session import get_session
@@ -266,6 +266,15 @@ async def _process_entry(
                 reasoning_parts.append(
                     f"Backing whales' own recent track record: {form:.0%} win rate across {form_sample} "
                     f"resolved-position samples."
+                )
+            hedge = notable_hedge(row)
+            if hedge is not None:
+                # Already priced into consensus_score via hedge_multiplier —
+                # this just makes the discount visible in the trade log.
+                reasoning_parts.append(
+                    f"Note: {hedge['trader_label']} (rank #{hedge['leaderboard_rank']}) is hedged — "
+                    f"${hedge['this_side_value_usd']:,.0f} on this side vs ${hedge['opposing_side_value_usd']:,.0f} "
+                    f"on the other, already discounted in the score above."
                 )
             if verdict["verdict"] == "downsize":
                 downsized = _downsize(stake)

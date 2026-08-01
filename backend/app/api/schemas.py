@@ -30,6 +30,9 @@ class HolderOut(BaseModel):
     # from leaderboard rank (which reflects total PnL, not accuracy).
     win_rate: float | None = None
     recent_form: float | None = None
+    # This trader's dollar value on OTHER outcomes of this same market, if
+    # any — None when they hold only this side. Present, they're hedged.
+    hedge_opposing_value: float | None = None
 
 
 class ConsensusRowOut(BaseModel):

@@ -303,6 +303,7 @@ async def insert_consensus_groups(
                     "cash_pnl": pos.cash_pnl,
                     "percent_pnl": pos.percent_pnl,
                     "trader_weight": holding.weight,
+                    "hedge_opposing_value": holding.hedge_opposing_value,
                 }
             )
     await _bulk_insert(session, ConsensusPositionTrader.__table__, trader_rows)
@@ -366,6 +367,7 @@ def _holder_out(t, track_record_by_trader: dict[int, tuple[float, float]]) -> Ho
         percent_pnl=float(t.percent_pnl),
         win_rate=track_record[0] if track_record else None,
         recent_form=track_record[1] if track_record else None,
+        hedge_opposing_value=float(t.hedge_opposing_value) if t.hedge_opposing_value is not None else None,
     )
 
 

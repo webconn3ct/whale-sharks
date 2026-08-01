@@ -150,14 +150,44 @@ def trader_weight(trader: Trader, track_records: dict[str, TrackRecord]) -> floa
     return base * track_record_multiplier(track_records.get(trader.wallet))
 
 
+# --- Hedging (same trader on both sides of the same market) ---------------
+#
+# A trader holding both the over AND the under (with different amounts) on
+# the same market isn't a genuine, full-conviction vote for either side —
+# the larger side is a real but partial lean, and the smaller side barely
+# one at all. Dampens weight toward this floor as more of the trader's own
+# exposure in THAT SPECIFIC market sits on other outcomes; never zeroes it
+# out entirely since even the smaller side is still real capital at risk.
+HEDGE_MULTIPLIER_FLOOR = 0.4
+
+
+def hedge_multiplier(position_value: float, market_total_value: float) -> float:
+    if market_total_value <= 0:
+        return 1.0
+    net_fraction = min(position_value / market_total_value, 1.0)
+    return HEDGE_MULTIPLIER_FLOOR + (1 - HEDGE_MULTIPLIER_FLOOR) * net_fraction
+
+
+def wallet_market_totals(positions: list[Position]) -> dict[str, float]:
+    """condition_id -> this wallet's summed current_value across ALL their
+    outcomes in that market — the denominator hedge_multiplier needs."""
+    totals: dict[str, float] = defaultdict(float)
+    for p in positions:
+        totals[p.condition_id] += p.current_value
+    return totals
+
+
 @dataclass(frozen=True)
 class TraderHolding:
     trader: Trader
     position: Position
-    # trader_weight at construction time — persisted per-holder so the
-    # smaller top-N cuts can be re-scored from stored data without needing
-    # to re-fetch track records at read time.
+    # trader_weight at construction time (already hedge-adjusted) —
+    # persisted per-holder so the smaller top-N cuts can be re-scored from
+    # stored data without needing to re-fetch track records at read time.
     weight: float
+    # This trader's dollar value on OTHER outcomes of this same market, if
+    # any — None when they hold only this side (the common case).
+    hedge_opposing_value: float | None = None
 
 
 @dataclass(frozen=True)
@@ -270,9 +300,20 @@ def build_consensus_groups(
 
     for wallet in pool_wallets:
         trader = traders[wallet]
-        for position in positions_by_wallet.get(wallet, []):
+        wallet_positions = positions_by_wallet.get(wallet, [])
+        market_totals = wallet_market_totals(wallet_positions)
+        for position in wallet_positions:
             key = (position.condition_id, position.outcome_index)
-            groups[key].append(TraderHolding(trader=trader, position=position, weight=weight_by_wallet[wallet]))
+            market_total = market_totals[position.condition_id]
+            opposing_value = market_total - position.current_value
+            groups[key].append(
+                TraderHolding(
+                    trader=trader,
+                    position=position,
+                    weight=weight_by_wallet[wallet] * hedge_multiplier(position.current_value, market_total),
+                    hedge_opposing_value=opposing_value if opposing_value > 0.01 else None,
+                )
+            )
             labels[key] = (position.outcome, position.cur_price)
 
     result: list[ConsensusGroup] = []
