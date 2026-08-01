@@ -15,53 +15,42 @@ from app.integrations.polymarket_client import PolymarketClient
 logger = logging.getLogger(__name__)
 
 SCAN_JOB_ID = "whale_scan"
-WATCHDOG_JOB_ID = "whale_scan_watchdog"
 
 EASTERN = ZoneInfo("America/New_York")
-# Half again the normal 30-min cadence — enough slack that a scan simply
-# running a bit long never trips this, but short enough that any repeat of
-# the cron job silently going quiet self-heals within minutes, not hours.
-WATCHDOG_STALENESS = timedelta(minutes=45)
+# Sized to land close to "2 scans/hour" on average: a check lands within
+# CHECK_INTERVAL of crossing this staleness age, so worst case is roughly
+# STALENESS + CHECK_INTERVAL between scans.
+STALENESS = timedelta(minutes=26)
+CHECK_INTERVAL_MINUTES = 4
 
 
 def _in_active_window() -> bool:
     return 9 <= datetime.now(EASTERN).hour < 24
 
 
-async def _scheduled_scan(client: PolymarketClient, settings: Settings) -> None:
-    """CronTrigger(minute="0,30", ...) used to drive this — empirically, over
-    three straight days, the :00 tick fired every single time and the :30
-    tick fired NONE of the time (100% consistent, not a random flake), with
-    the watchdog below quietly papering over the gap each cycle ~20 minutes
-    late. That's specific enough to a two-value cron minute field that it's
-    not worth chasing inside APScheduler's internals with no log access —
-    switched to a plain 30-minute interval instead, which has no minute-list
-    parsing involved at all, plus this same in-function window check the
-    watchdog already used."""
-    if not _in_active_window():
-        return
-    await run_scan(client, settings)
-
-
-async def _scan_watchdog(client: PolymarketClient, settings: Settings) -> None:
-    """Independent safety net — a scan cycle silently not firing (has
-    happened before with no error anywhere to explain it) matters more than
-    landing on a clean cadence. Checks every 5 minutes; if nothing has
-    completed in a while during the active window, runs one directly.
-    run_scan's own scan-lock makes this safe to overlap with the main job —
-    whichever gets there first just wins, the other no-ops."""
+async def _scan_if_stale(client: PolymarketClient, settings: Settings) -> None:
+    """This is now the ONLY scan-scheduling mechanism — a fixed-interval
+    trigger (first CronTrigger(minute="0,30"), then a 30-min IntervalTrigger)
+    kept silently failing to fire in production for reasons never visible
+    without server log access, sometimes for 90+ minutes at a stretch, while
+    THIS same staleness-check approach (originally just a watchdog backing
+    up that trigger) has reliably self-healed every single time it's been
+    tested against a real gap. Simpler and more proven beats a second,
+    unreliable mechanism riding alongside it — checks every
+    CHECK_INTERVAL_MINUTES; if nothing has completed in over STALENESS
+    during the active window, runs one directly. Safe against overlapping
+    with a manual admin rescan — run_scan's own scan-lock means whichever
+    gets there first wins, the other just no-ops."""
     if not _in_active_window():
         return
 
     async with get_session() as session:
         last_completed = await get_last_completed_scan_at(session)
 
-    if last_completed is not None and datetime.now(UTC) - last_completed < WATCHDOG_STALENESS:
+    if last_completed is not None and datetime.now(UTC) - last_completed < STALENESS:
         return
 
-    logger.warning(
-        "scan watchdog: no completed scan since %s (or ever) — running one now", last_completed
-    )
+    logger.warning("scan check: no completed scan since %s (or ever) — running one now", last_completed)
     await run_scan(client, settings)
 
 
@@ -82,24 +71,19 @@ def _log_scheduler_event(event) -> None:
 def start_scheduler(client: PolymarketClient, settings: Settings) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        _scheduled_scan,
-        trigger=IntervalTrigger(minutes=30),
+        _scan_if_stale,
+        trigger=IntervalTrigger(minutes=CHECK_INTERVAL_MINUTES),
         args=[client, settings],
         id=SCAN_JOB_ID,
         max_instances=1,
         coalesce=True,
         misfire_grace_time=60,
     )
-    scheduler.add_job(
-        _scan_watchdog,
-        trigger=IntervalTrigger(minutes=5),
-        args=[client, settings],
-        id=WATCHDOG_JOB_ID,
-        max_instances=1,
-        coalesce=True,
-        misfire_grace_time=60,
-    )
     scheduler.add_listener(_log_scheduler_event, EVENT_JOB_SUBMITTED | EVENT_JOB_MISSED | EVENT_JOB_ERROR)
     scheduler.start()
-    logger.info("scheduler started: scan every 30min, 9am-midnight America/New_York (watchdog every 5min)")
+    logger.info(
+        "scheduler started: staleness check every %dmin (fires if >%dmin since last scan), 9am-midnight America/New_York",
+        CHECK_INTERVAL_MINUTES,
+        STALENESS.total_seconds() // 60,
+    )
     return scheduler
