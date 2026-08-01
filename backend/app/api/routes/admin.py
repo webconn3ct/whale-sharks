@@ -362,6 +362,13 @@ async def acknowledge_signup(signup_id: int):
     return {"ok": True}
 
 
+@router.get("/signups/count")
+async def get_signups_count():
+    async with get_session() as session:
+        count = await repository.count_signups(session)
+    return {"count": count}
+
+
 # ---- hot-streak traders ---------------------------------------------------------
 
 

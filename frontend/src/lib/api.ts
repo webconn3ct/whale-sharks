@@ -224,6 +224,10 @@ export function acknowledgeSignup(id: number): Promise<{ ok: boolean }> {
   return postJson(`/api/admin/signups/${id}/acknowledge`, {});
 }
 
+export function fetchSignupsCount(): Promise<{ count: number }> {
+  return getJson<{ count: number }>("/api/admin/signups/count");
+}
+
 export function fetchHotTraders(): Promise<HotTraderOut[]> {
   return getJson<HotTraderOut[]>("/api/admin/hot-traders");
 }

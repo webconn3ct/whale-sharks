@@ -892,6 +892,12 @@ async def list_signups(session: AsyncSession, limit: int = 100) -> list[Signup]:
     return list(result.scalars().all())
 
 
+async def count_signups(session: AsyncSession) -> int:
+    """All-time total, regardless of acknowledged state or the list_signups
+    limit — just a number for the admin panel, no separate storage."""
+    return await session.scalar(select(func.count()).select_from(Signup)) or 0
+
+
 async def acknowledge_signup(session: AsyncSession, signup_id: int) -> None:
     await session.execute(Signup.__table__.update().where(Signup.id == signup_id).values(acknowledged=True))
     await session.commit()

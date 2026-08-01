@@ -19,6 +19,7 @@ import {
   fetchLoginStats,
   fetchScoringWeights,
   fetchSignups,
+  fetchSignupsCount,
   fetchSupportRequests,
   fetchWhaleAlerts,
   pauseBotEntries,
@@ -356,6 +357,7 @@ function NotificationsSection() {
 function SignupsSection() {
   const qc = useQueryClient();
   const signupsQuery = useQuery({ queryKey: ["admin", "signups"], queryFn: fetchSignups, refetchInterval: 30_000 });
+  const countQuery = useQuery({ queryKey: ["admin", "signups-count"], queryFn: fetchSignupsCount, refetchInterval: 30_000 });
   const ackMutation = useMutation({
     mutationFn: acknowledgeSignup,
     onSuccess: (_res, id) =>
@@ -366,9 +368,14 @@ function SignupsSection() {
 
   return (
     <Section title="Sign-up log">
-      <p className="mb-3 text-xs text-[var(--text-muted)]">
-        Emails/Instagram handles submitted from the login page — reach out, then dismiss.
-      </p>
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <p className="text-xs text-[var(--text-muted)]">
+          Emails/Instagram handles submitted from the login page — reach out, then dismiss.
+        </p>
+        <span className="shrink-0 text-xs text-[var(--text-muted)]">
+          <span className="font-medium tabular-nums text-[var(--text-primary)]">{countQuery.data?.count ?? "—"}</span> total sign-ups
+        </span>
+      </div>
       <ul className="space-y-2">
         {signups.map((s) => (
           <li
