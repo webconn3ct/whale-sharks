@@ -1,8 +1,11 @@
 """Computes a data-backed "lean" between one or two consensus outcomes, then
 phrases it in one sentence. The facts are always computed deterministically
-from real snapshot data; when an Anthropic key is configured, Claude is used
-only to phrase those exact facts into readable prose — it is never given
-room to invent a number or claim that isn't already in `facts`.
+from real snapshot data; Claude phrases those exact facts into readable
+prose (never free to invent a number or claim not already in `facts`) and,
+when an Anthropic key is configured, can also check live news for the
+specific market — the same live-news awareness bot_research.py already
+gives KrillBot's own trade entries, now extended to the lean text every
+visitor sees, not just the bot's trades.
 """
 
 import logging
@@ -38,6 +41,12 @@ track-record side disagree, say that tension plainly instead of resolving it for
 on one side but a stronger recent track record on the other.
 - Describe what the whale data currently shows, never what will happen — this is NOT a prediction of the \
 market's real-world outcome, and must never be phrased as one (no "will win", "is likely to happen", etc.).
+- You have live web search available. If there's a clear, current, specific news item about this exact \
+market/topic — an injury, a result that already happened, a lineup change, a major reversal — that the whale \
+data alone wouldn't show, search for it and weave that into your one sentence alongside the whale facts. Only \
+mention news that's genuinely current and specific to this market; don't force a search result in for its own \
+sake, don't speculate beyond what you actually found, and never let a news mention slide into predicting the \
+outcome — same rule as the whale data itself.
 - The sentence must be a real, complete, well-formed sentence on its own — not a sentence fragment, not a \
 list of numbers. Keep it tight enough (well under 40 words) that you never have to cut it short.
 - Output exactly one sentence, no preamble, no quotation marks."""
@@ -117,8 +126,9 @@ async def phrase_reasoning(settings: Settings, facts: dict) -> str:
     try:
         response = await client.messages.create(
             model="claude-opus-5",
-            max_tokens=300,
+            max_tokens=1024,
             system=SYSTEM_BLOCKS,
+            tools=[{"type": "web_search_20260209", "name": "web_search"}],
             messages=[{"role": "user", "content": str(facts)}],
         )
     except Exception:
@@ -131,8 +141,12 @@ async def phrase_reasoning(settings: Settings, facts: dict) -> str:
         # max_tokens here means the sentence got cut off mid-thought — never
         # show a fragment, the deterministic template is always complete.
         return render_template(facts)
-    text = next((block.text for block in response.content if block.type == "text"), "")
-    text = text.strip()
+    # A web-search turn splits its answer across several separate text
+    # blocks interleaved with tool calls (observed: the model drives search
+    # via server-side code execution, and the final sentence itself can
+    # land split across two or three text blocks) — concatenate all of them
+    # in order rather than picking just one, or the result is a fragment.
+    text = "".join(block.text for block in response.content if block.type == "text").strip()
     if not text or text[-1] not in ".!?":
         # Any other sign the sentence didn't land clean — same reasoning.
         return render_template(facts)
