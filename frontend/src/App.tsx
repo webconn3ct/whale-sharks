@@ -13,6 +13,7 @@ import { AdminLogin } from "./components/AdminLogin";
 import { AdminPanel } from "./components/AdminPanel";
 import { ChatWidget } from "./components/ChatWidget";
 import { InstagramIcon } from "./components/InstagramIcon";
+import { XIcon } from "./components/XIcon";
 import { useAuthStatus, useCategories, useConsensus, useHighlights, useSummary } from "./hooks/useApi";
 import type { ConsensusFilters, ConsensusRowOut, Variant } from "./lib/types";
 import { ApiNotReadyError, logout } from "./lib/api";
@@ -76,7 +77,16 @@ function Dashboard({ onLoggedOut }: { onLoggedOut: () => void }) {
           section's own internal spacing (headings, grids, card gaps) is
           untouched and lives inside that section's own component. */}
       <div className="space-y-8">
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-4">
+          <a
+            href="https://x.com/WhaleSharkksX?ct=b25ib2FyZGluZ193ZWxjb21l&ppid=email-push-service"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+          >
+            <XIcon size={13} />
+            @WhaleSharkksX
+          </a>
           <a
             href="https://www.instagram.com/whalesharkks"
             target="_blank"

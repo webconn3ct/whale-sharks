@@ -70,6 +70,17 @@ class SummaryOut(BaseModel):
     last_refresh_at: datetime | None
 
 
+class TeaserOut(BaseModel):
+    """Deliberately minimal, unauthenticated — the login-page teaser. No
+    market names, picks, or trader identities, just aggregate numbers and
+    KrillBot's real equity curve shape."""
+
+    tracked_traders: int
+    total_whale_exposure: float
+    bot_return_pct: float
+    bot_equity_curve: list[float]
+
+
 class HealthOut(BaseModel):
     status: str
     ready: bool

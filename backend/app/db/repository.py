@@ -618,6 +618,29 @@ async def get_open_bot_positions(session: AsyncSession) -> list[BotPosition]:
     return list(result.scalars().all())
 
 
+MAX_TEASER_EQUITY_POINTS = 40
+
+
+async def get_bot_equity_curve(session: AsyncSession) -> list[float]:
+    """Chronological running bankroll value (starting balance + cumulative
+    realized P&L) after each closed trade — a real shape for the login-page
+    teaser chart, capped to the most recent MAX_TEASER_EQUITY_POINTS so it
+    doesn't reveal the exact trade count to an unauthenticated caller. No
+    market names, sizes, or timestamps — just the balance trajectory."""
+    state = await get_or_create_bot_state(session)
+    result = await session.execute(
+        select(BotPosition.realized_pnl)
+        .where(BotPosition.status == BotPositionStatus.CLOSED, BotPosition.exit_at.is_not(None))
+        .order_by(BotPosition.exit_at.asc())
+    )
+    running = float(state.starting_balance)
+    curve = [running]
+    for pnl in result.scalars().all():
+        running += float(pnl or 0)
+        curve.append(running)
+    return curve[-MAX_TEASER_EQUITY_POINTS:]
+
+
 async def create_bot_position(session: AsyncSession, **fields) -> BotPosition:
     position = BotPosition(status=BotPositionStatus.OPEN, **fields)
     session.add(position)

@@ -49,6 +49,13 @@ export interface SummaryOut {
   last_refresh_at: string | null;
 }
 
+export interface TeaserOut {
+  tracked_traders: number;
+  total_whale_exposure: number;
+  bot_return_pct: number;
+  bot_equity_curve: number[];
+}
+
 export interface HealthOut {
   status: string;
   ready: boolean;

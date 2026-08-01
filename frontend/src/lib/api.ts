@@ -19,6 +19,7 @@ import type {
   SignupOut,
   SummaryOut,
   SupportRequestOut,
+  TeaserOut,
   WhaleAlertOut,
 } from "./types";
 
@@ -68,6 +69,10 @@ function del<T>(path: string): Promise<T> {
 
 export function fetchSummary(): Promise<SummaryOut> {
   return getJson<SummaryOut>("/api/summary");
+}
+
+export function fetchTeaser(): Promise<TeaserOut> {
+  return getJson<TeaserOut>("/api/teaser");
 }
 
 export function fetchHealth(): Promise<HealthOut> {

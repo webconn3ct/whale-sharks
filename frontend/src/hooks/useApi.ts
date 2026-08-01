@@ -8,6 +8,7 @@ import {
   fetchConsensusLean,
   fetchHighlights,
   fetchSummary,
+  fetchTeaser,
 } from "../lib/api";
 import type { BotTimeframe, ConsensusFilters } from "../lib/types";
 
@@ -24,6 +25,17 @@ export function useSummary() {
     queryFn: fetchSummary,
     refetchInterval: SUMMARY_POLL_MS,
     retry: shouldRetry,
+  });
+}
+
+// Public, unauthenticated — used on the login page itself, so it can't
+// depend on a visitor session existing yet.
+export function useTeaser() {
+  return useQuery({
+    queryKey: ["teaser"],
+    queryFn: fetchTeaser,
+    staleTime: SUMMARY_POLL_MS,
+    retry: (count: number, error: Error) => error.name !== "ApiNotReadyError" && count < 2,
   });
 }
 

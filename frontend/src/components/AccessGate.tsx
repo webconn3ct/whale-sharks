@@ -1,13 +1,61 @@
 import { useState } from "react";
 import { OceanScene } from "./OceanScene";
 import { InstagramIcon } from "./InstagramIcon";
+import { XIcon } from "./XIcon";
 import { submitSignup, unlock } from "../lib/api";
+import { useTeaser } from "../hooks/useApi";
+import { formatCompactCurrency } from "../lib/format";
 
 function StarIcon({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <path d="M12 2.5l2.6 6.3 6.8.5-5.2 4.4 1.7 6.6L12 16.9l-5.9 3.4 1.7-6.6-5.2-4.4 6.8-.5L12 2.5z" />
     </svg>
+  );
+}
+
+// A small, deliberately non-specific proof point — real aggregate numbers
+// and KrillBot's real equity-curve shape, no market names or picks. Fails
+// silently (renders nothing) rather than blocking or cluttering the login
+// flow if the teaser endpoint isn't ready yet.
+function TeaserCard() {
+  const teaserQuery = useTeaser();
+  const teaser = teaserQuery.data;
+  if (!teaser || teaser.bot_equity_curve.length < 2) return null;
+
+  const curve = teaser.bot_equity_curve;
+  const min = Math.min(...curve);
+  const max = Math.max(...curve);
+  const range = max - min || 1;
+  const points = curve
+    .map((v, i) => {
+      const x = (i / (curve.length - 1)) * 100;
+      const y = 26 - ((v - min) / range) * 26;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const isPositive = teaser.bot_return_pct >= 0;
+  const lineColor = isPositive ? "var(--good)" : "var(--critical)";
+
+  return (
+    <div className="mt-4 rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-4 shadow-2xl">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">KrillBot, live</div>
+          <div className="text-lg font-semibold tabular-nums" style={{ color: lineColor }}>
+            {isPositive ? "+" : ""}
+            {teaser.bot_return_pct.toFixed(1)}%
+          </div>
+        </div>
+        <svg viewBox="0 0 100 26" preserveAspectRatio="none" className="h-8 w-28" aria-hidden="true">
+          <polyline points={points} fill="none" stroke={lineColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-hairline)] pt-3 text-xs text-[var(--text-muted)]">
+        <span>{teaser.tracked_traders.toLocaleString()} whales tracked</span>
+        <span>{formatCompactCurrency(teaser.total_whale_exposure)} in live positions</span>
+      </div>
+    </div>
   );
 }
 
@@ -79,14 +127,20 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
   };
 
   return (
-    <div className="gate-background relative flex min-h-screen items-center justify-center overflow-hidden px-6">
-      <OceanScene />
-      <img
-        src="/brand/shark-mark-800.png"
-        alt=""
-        className="gate-logo-mark -left-64 top-1/2 w-[1100px] -translate-y-1/2"
-      />
-      <img src="/brand/shark-mark-800.png" alt="" className="gate-logo-mark right-0 top-0 w-[500px] rotate-12" />
+    <div className="gate-background relative flex min-h-screen items-center justify-center px-6 py-10">
+      {/* Decorative background only — its own clipped layer, so oversized
+          art never constrains or clips the actual page content below. A
+          tall stack (form + teaser + signup) needs to be free to scroll on
+          short viewports instead of getting cut off. */}
+      <div className="absolute inset-0 overflow-hidden">
+        <OceanScene />
+        <img
+          src="/brand/shark-mark-800.png"
+          alt=""
+          className="gate-logo-mark -left-64 top-1/2 w-[1100px] -translate-y-1/2"
+        />
+        <img src="/brand/shark-mark-800.png" alt="" className="gate-logo-mark right-0 top-0 w-[500px] rotate-12" />
+      </div>
 
       <a
         href="/admin"
@@ -111,6 +165,15 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
           <InstagramIcon size={15} />
           @whalesharkks
         </a>
+        <a
+          href="https://x.com/WhaleSharkksX?ct=b25ib2FyZGluZ193ZWxjb21l&ppid=email-push-service"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+        >
+          <XIcon size={13} />
+          @WhaleSharkksX
+        </a>
       </div>
 
       <div className="relative z-10 w-full max-w-sm">
@@ -129,6 +192,15 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
           >
             <InstagramIcon size={15} />
             @whalesharkks
+          </a>
+          <a
+            href="https://x.com/WhaleSharkksX?ct=b25ib2FyZGluZ193ZWxjb21l&ppid=email-push-service"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] transition-colors hover:text-[var(--accent)]"
+          >
+            <XIcon size={13} />
+            @WhaleSharkksX
           </a>
         </div>
 
@@ -167,6 +239,7 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
           </button>
         </form>
 
+        <TeaserCard />
         <SignupBox />
       </div>
     </div>
