@@ -52,7 +52,10 @@ export interface SummaryOut {
 export interface TeaserOut {
   tracked_traders: number;
   total_whale_exposure: number;
+  active_markets: number;
   bot_return_pct: number;
+  bot_win_count: number;
+  bot_loss_count: number;
   bot_equity_curve: number[];
 }
 

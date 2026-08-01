@@ -77,7 +77,10 @@ class TeaserOut(BaseModel):
 
     tracked_traders: int
     total_whale_exposure: float
+    active_markets: int
     bot_return_pct: float
+    bot_win_count: int
+    bot_loss_count: int
     bot_equity_curve: list[float]
 
 

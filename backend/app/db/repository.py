@@ -618,6 +618,19 @@ async def get_open_bot_positions(session: AsyncSession) -> list[BotPosition]:
     return list(result.scalars().all())
 
 
+async def get_bot_win_loss_counts(session: AsyncSession) -> tuple[int, int]:
+    """(wins, losses) across all closed trades — aggregate record only, no
+    market names/sizes/timestamps, safe for the unauthenticated teaser."""
+    result = await session.execute(
+        select(BotPosition.realized_pnl).where(
+            BotPosition.status == BotPositionStatus.CLOSED, BotPosition.realized_pnl.is_not(None)
+        )
+    )
+    pnls = [float(p) for p in result.scalars().all()]
+    wins = sum(1 for p in pnls if p > 0)
+    return wins, len(pnls) - wins
+
+
 MAX_TEASER_EQUITY_POINTS = 40
 
 

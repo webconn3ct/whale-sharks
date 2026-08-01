@@ -37,23 +37,42 @@ function TeaserCard() {
   const isPositive = teaser.bot_return_pct >= 0;
   const lineColor = isPositive ? "var(--good)" : "var(--critical)";
 
+  const totalTrades = teaser.bot_win_count + teaser.bot_loss_count;
+
   return (
-    <div className="mt-4 rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-4 shadow-2xl">
+    <div className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-4 shadow-2xl">
       <div className="flex items-center justify-between gap-4">
         <div>
           <div className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">KrillBot, live</div>
-          <div className="text-lg font-semibold tabular-nums" style={{ color: lineColor }}>
-            {isPositive ? "+" : ""}
-            {teaser.bot_return_pct.toFixed(1)}%
+          <div className="flex items-baseline gap-2">
+            <span className="text-lg font-semibold tabular-nums" style={{ color: lineColor }}>
+              {isPositive ? "+" : ""}
+              {teaser.bot_return_pct.toFixed(1)}%
+            </span>
+            {totalTrades > 0 && (
+              <span className="text-xs tabular-nums text-[var(--text-muted)]">
+                {teaser.bot_win_count}W-{teaser.bot_loss_count}L
+              </span>
+            )}
           </div>
         </div>
         <svg viewBox="0 0 100 26" preserveAspectRatio="none" className="h-8 w-28" aria-hidden="true">
           <polyline points={points} fill="none" stroke={lineColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
-      <div className="mt-3 flex items-center justify-between border-t border-[var(--border-hairline)] pt-3 text-xs text-[var(--text-muted)]">
-        <span>{teaser.tracked_traders.toLocaleString()} whales tracked</span>
-        <span>{formatCompactCurrency(teaser.total_whale_exposure)} in live positions</span>
+      <div className="mt-3 grid grid-cols-3 gap-2 border-t border-[var(--border-hairline)] pt-3 text-center text-[11px] text-[var(--text-muted)]">
+        <div>
+          <div className="font-medium tabular-nums text-[var(--text-secondary)]">{teaser.tracked_traders.toLocaleString()}</div>
+          whales tracked
+        </div>
+        <div>
+          <div className="font-medium tabular-nums text-[var(--text-secondary)]">{teaser.active_markets.toLocaleString()}</div>
+          live markets
+        </div>
+        <div>
+          <div className="font-medium tabular-nums text-[var(--text-secondary)]">{formatCompactCurrency(teaser.total_whale_exposure)}</div>
+          tracked
+        </div>
       </div>
     </div>
   );
@@ -214,6 +233,10 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
           </div>
         </div>
 
+        <div className="mb-4">
+          <TeaserCard />
+        </div>
+
         <form
           onSubmit={submit}
           className="rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-6 shadow-2xl"
@@ -239,7 +262,6 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
           </button>
         </form>
 
-        <TeaserCard />
         <SignupBox />
       </div>
     </div>
