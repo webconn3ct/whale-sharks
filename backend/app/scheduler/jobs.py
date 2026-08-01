@@ -4,7 +4,6 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MISSED, EVENT_JOB_SUBMITTED
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import Settings
@@ -25,15 +24,33 @@ EASTERN = ZoneInfo("America/New_York")
 WATCHDOG_STALENESS = timedelta(minutes=45)
 
 
+def _in_active_window() -> bool:
+    return 9 <= datetime.now(EASTERN).hour < 24
+
+
+async def _scheduled_scan(client: PolymarketClient, settings: Settings) -> None:
+    """CronTrigger(minute="0,30", ...) used to drive this — empirically, over
+    three straight days, the :00 tick fired every single time and the :30
+    tick fired NONE of the time (100% consistent, not a random flake), with
+    the watchdog below quietly papering over the gap each cycle ~20 minutes
+    late. That's specific enough to a two-value cron minute field that it's
+    not worth chasing inside APScheduler's internals with no log access —
+    switched to a plain 30-minute interval instead, which has no minute-list
+    parsing involved at all, plus this same in-function window check the
+    watchdog already used."""
+    if not _in_active_window():
+        return
+    await run_scan(client, settings)
+
+
 async def _scan_watchdog(client: PolymarketClient, settings: Settings) -> None:
-    """Independent of the main :00/:30 cron job — a scan cycle silently not
-    firing (as happened once with no error anywhere to explain it) matters
-    more than landing on a clean half-hour boundary. Checks every 5 minutes;
-    if nothing has completed in a while during the active window, runs one
-    directly. run_scan's own scan-lock makes this safe to overlap with the
-    cron job — whichever gets there first just wins, the other no-ops."""
-    now_eastern = datetime.now(EASTERN)
-    if not (9 <= now_eastern.hour < 24):
+    """Independent safety net — a scan cycle silently not firing (has
+    happened before with no error anywhere to explain it) matters more than
+    landing on a clean cadence. Checks every 5 minutes; if nothing has
+    completed in a while during the active window, runs one directly.
+    run_scan's own scan-lock makes this safe to overlap with the main job —
+    whichever gets there first just wins, the other no-ops."""
+    if not _in_active_window():
         return
 
     async with get_session() as session:
@@ -65,14 +82,8 @@ def _log_scheduler_event(event) -> None:
 def start_scheduler(client: PolymarketClient, settings: Settings) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        run_scan,
-        # Fixed wall-clock cadence (:00 and :30 every hour) rather than an
-        # interval counted from process start, so scans land on a
-        # predictable schedule. A manual admin rescan can still fire any
-        # time in between — the scan-lock (try_acquire_scan_lock) already
-        # makes concurrent scans safely no-op rather than collide, so the
-        # scheduled run still happens on its normal cadence regardless.
-        trigger=CronTrigger(minute="0,30", hour="9-23", timezone="America/New_York"),
+        _scheduled_scan,
+        trigger=IntervalTrigger(minutes=30),
         args=[client, settings],
         id=SCAN_JOB_ID,
         max_instances=1,
@@ -90,5 +101,5 @@ def start_scheduler(client: PolymarketClient, settings: Settings) -> AsyncIOSche
     )
     scheduler.add_listener(_log_scheduler_event, EVENT_JOB_SUBMITTED | EVENT_JOB_MISSED | EVENT_JOB_ERROR)
     scheduler.start()
-    logger.info("scheduler started: scan at :00 and :30, 9am-midnight America/New_York (watchdog every 5min)")
+    logger.info("scheduler started: scan every 30min, 9am-midnight America/New_York (watchdog every 5min)")
     return scheduler
