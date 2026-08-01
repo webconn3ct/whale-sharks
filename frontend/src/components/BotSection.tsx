@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { BotPositionOut, BotStateOut, BotTimeframe } from "../lib/types";
-import { formatCurrency, formatPercent, formatProbability, formatRelativeTime } from "../lib/format";
+import { formatCurrency, formatPercent, formatProbability } from "../lib/format";
 import { useBotPositions, useBotState } from "../hooks/useApi";
 import { KrillIcon } from "./KrillIcon";
 import { PageControl } from "./PageControl";
@@ -115,11 +115,6 @@ export function BotSection() {
             advice.
           </p>
         </div>
-        {stateQuery.data?.last_recalibrated_at && (
-          <span className="text-xs text-[var(--text-muted)]">
-            Last self-tuned {formatRelativeTime(stateQuery.data.last_recalibrated_at)}
-          </span>
-        )}
       </div>
 
       <BotSummary state={stateQuery.data} />
