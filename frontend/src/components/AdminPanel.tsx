@@ -103,6 +103,11 @@ function OperationalControls() {
       {rescanMutation.isSuccess && (
         <p className="mt-2 text-sm text-[var(--good)]">Scan started — refreshes below in ~30-60s.</p>
       )}
+      {rescanMutation.isError && (
+        <p className="mt-2 text-sm text-[var(--critical)]">
+          Failed to start: {rescanMutation.error instanceof Error ? rescanMutation.error.message : "unknown error"}
+        </p>
+      )}
 
       <div className="mt-4 overflow-x-auto">
         <table className="w-full border-collapse text-sm">
