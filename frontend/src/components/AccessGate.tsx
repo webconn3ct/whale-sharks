@@ -14,13 +14,39 @@ function StarIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+// Same outer shape as the loaded card (border/padding/rounded corners) so
+// swapping in the real content never shifts the layout — it reads as "this
+// card is loading" from the very first paint instead of popping in late
+// after everything else on the page has already settled.
+function TeaserCardSkeleton() {
+  return (
+    <div className="animate-pulse rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-surface)] p-4 shadow-2xl">
+      <div className="flex items-center justify-between gap-4">
+        <div className="space-y-2">
+          <div className="h-3 w-20 rounded bg-[var(--border-hairline)]" />
+          <div className="h-5 w-24 rounded bg-[var(--border-hairline)]" />
+        </div>
+        <div className="h-8 w-28 rounded bg-[var(--border-hairline)]" />
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 border-t border-[var(--border-hairline)] pt-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="mx-auto h-6 w-12 rounded bg-[var(--border-hairline)]" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // A small, deliberately non-specific proof point — real aggregate numbers
-// and KrillBot's real equity-curve shape, no market names or picks. Fails
-// silently (renders nothing) rather than blocking or cluttering the login
-// flow if the teaser endpoint isn't ready yet.
+// and KrillBot's real equity-curve shape, no market names or picks. Shows a
+// matching-size skeleton while loading (see above) and fails silently
+// (renders nothing) only on an actual error, rather than blocking or
+// cluttering the login flow.
 function TeaserCard() {
   const teaserQuery = useTeaser();
   const teaser = teaserQuery.data;
+
+  if (teaserQuery.isLoading) return <TeaserCardSkeleton />;
   if (!teaser || teaser.bot_equity_curve.length < 2) return null;
 
   const curve = teaser.bot_equity_curve;
@@ -236,6 +262,8 @@ export function AccessGate({ onUnlocked }: { onUnlocked: () => void }) {
         <div className="mb-4">
           <TeaserCard />
         </div>
+
+        <p className="mb-4 text-center text-sm font-medium text-[var(--accent)]">Sign up now to see all markets!</p>
 
         <form
           onSubmit={submit}
