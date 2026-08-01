@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 SCAN_JOB_ID = "whale_scan"
 
 EASTERN = ZoneInfo("America/New_York")
-# Sized to land close to "2 scans/hour" on average: a check lands within
+# Sized to land close to "3 scans/hour" on average: a check lands within
 # CHECK_INTERVAL of crossing this staleness age, so worst case is roughly
 # STALENESS + CHECK_INTERVAL between scans.
-STALENESS = timedelta(minutes=26)
-CHECK_INTERVAL_MINUTES = 4
+STALENESS = timedelta(minutes=17)
+CHECK_INTERVAL_MINUTES = 3
 
 
 def _in_active_window() -> bool:
