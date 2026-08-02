@@ -204,22 +204,32 @@ class ConsensusGroup:
 
 def merge_leaderboards(entries_by_timeframe: dict[Timeframe, list[LeaderboardEntry]]) -> dict[str, Trader]:
     """Merge duplicate wallets across the 4 leaderboards into one Trader each,
-    retaining every (timeframe, rank) appearance."""
-    ranks_by_wallet: dict[str, list[TraderRank]] = defaultdict(list)
+    retaining every (timeframe, rank) appearance.
+
+    Polymarket's leaderboard can shift mid-pagination — a trader's rank
+    changing between two paginated page fetches can make the same wallet
+    come back twice for one timeframe with two different ranks. Keyed by
+    (wallet, timeframe) here, keeping the better rank on a collision, so a
+    trader can never end up with two rows for the same (scan, timeframe) —
+    that hit a real DB uniqueness constraint and silently rolled back the
+    entire scan when it happened live."""
+    ranks_by_wallet: dict[str, dict[Timeframe, TraderRank]] = defaultdict(dict)
     profile_by_wallet: dict[str, LeaderboardEntry] = {}
 
     for timeframe, entries in entries_by_timeframe.items():
         for entry in entries:
-            ranks_by_wallet[entry.proxy_wallet].append(
-                TraderRank(timeframe=timeframe, rank=entry.rank, pnl=entry.pnl, vol=entry.vol)
-            )
+            existing_rank = ranks_by_wallet[entry.proxy_wallet].get(timeframe)
+            if existing_rank is None or entry.rank < existing_rank.rank:
+                ranks_by_wallet[entry.proxy_wallet][timeframe] = TraderRank(
+                    timeframe=timeframe, rank=entry.rank, pnl=entry.pnl, vol=entry.vol
+                )
             # Prefer the entry with a username/profile image if wallet appears more than once.
             existing = profile_by_wallet.get(entry.proxy_wallet)
             if existing is None or (not existing.user_name and entry.user_name):
                 profile_by_wallet[entry.proxy_wallet] = entry
 
     traders: dict[str, Trader] = {}
-    for wallet, ranks in ranks_by_wallet.items():
+    for wallet, ranks_by_timeframe in ranks_by_wallet.items():
         profile = profile_by_wallet[wallet]
         traders[wallet] = Trader(
             wallet=wallet,
@@ -227,7 +237,7 @@ def merge_leaderboards(entries_by_timeframe: dict[Timeframe, list[LeaderboardEnt
             profile_image=profile.profile_image,
             x_username=profile.x_username,
             verified=profile.verified_badge,
-            ranks=tuple(ranks),
+            ranks=tuple(ranks_by_timeframe.values()),
         )
     return traders
 
