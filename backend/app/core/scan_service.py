@@ -22,14 +22,36 @@ logger = logging.getLogger(__name__)
 SCAN_TIMEOUT_SECONDS = 480
 MIN_POSITION_FETCH_SUCCESS_RATE = 0.9
 
+# repository.try_acquire_scan_lock (a transaction-scoped DB advisory lock)
+# only guards the final write portion of a scan — by design, since holding
+# one DB transaction open for the ~60-500s a scan can take (most of it spent
+# waiting on Polymarket's API, not the DB) would tie up a pooled connection
+# for the whole scan and works against pgbouncer's transaction-mode pooling.
+# But that means, without this, TWO overlapping triggers (the staleness
+# check firing again before a slow first attempt finishes, a manual rescan,
+# the cron endpoint, a fresh boot's catch-up scan) would each redundantly
+# run the ENTIRE expensive external-API fetch sequence before either one
+# even checks the DB lock — multiplying Polymarket API load and very
+# plausibly cascading into the exact kind of rate-limit-driven failures
+# seen in production. Single-instance is already a hard architectural
+# constraint for this app (in-process caches, in-process rate limiter), so
+# a plain in-process lock is a complete, correct guard for that case — the
+# DB lock remains as a second, independent safety net for the multi-replica
+# case this app isn't actually designed to run under.
+_scan_in_progress = asyncio.Lock()
+
 
 async def run_scan(client: PolymarketClient, settings: Settings) -> None:
-    try:
-        await asyncio.wait_for(_run_scan(client, settings), timeout=SCAN_TIMEOUT_SECONDS)
-    except TimeoutError:
-        logger.error("scan timed out after %ss — will retry next cycle", SCAN_TIMEOUT_SECONDS)
-    except Exception:
-        logger.exception("scan failed — will retry next cycle, serving last-good cache")
+    if _scan_in_progress.locked():
+        logger.warning("a scan is already running in this process — skipping this trigger")
+        return
+    async with _scan_in_progress:
+        try:
+            await asyncio.wait_for(_run_scan(client, settings), timeout=SCAN_TIMEOUT_SECONDS)
+        except TimeoutError:
+            logger.error("scan timed out after %ss — will retry next cycle", SCAN_TIMEOUT_SECONDS)
+        except Exception:
+            logger.exception("scan failed — will retry next cycle, serving last-good cache")
 
 
 async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
