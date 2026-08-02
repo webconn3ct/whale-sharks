@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     # Optional — the chatbot endpoint returns a "not configured" message until this is set.
     anthropic_api_key: str | None = None
 
+    # Optional — enables POST /api/cron/scan, a shared-secret-protected
+    # endpoint an EXTERNAL cron service can hit as a trigger for scans that
+    # doesn't depend on this process's own internal scheduler at all. Unset
+    # by default (endpoint 401s until a real secret is configured).
+    cron_secret: str | None = None
+
     # A single trader's position at or above this value triggers an admin
     # "whale alert" notification (see scan_service._record_whale_alerts).
     whale_alert_threshold: float = 500_000.0

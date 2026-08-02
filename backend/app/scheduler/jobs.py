@@ -24,7 +24,7 @@ STALENESS = timedelta(minutes=17)
 CHECK_INTERVAL_MINUTES = 3
 
 
-def _in_active_window() -> bool:
+def in_active_window() -> bool:
     return 9 <= datetime.now(EASTERN).hour < 24
 
 
@@ -41,7 +41,7 @@ async def _scan_if_stale(client: PolymarketClient, settings: Settings) -> None:
     during the active window, runs one directly. Safe against overlapping
     with a manual admin rescan — run_scan's own scan-lock means whichever
     gets there first wins, the other just no-ops."""
-    if not _in_active_window():
+    if not in_active_window():
         return
 
     async with get_session() as session:
