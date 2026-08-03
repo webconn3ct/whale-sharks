@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.config import Settings
 from app.core import bot_service
@@ -40,18 +40,50 @@ MIN_POSITION_FETCH_SUCCESS_RATE = 0.9
 # case this app isn't actually designed to run under.
 _scan_in_progress = asyncio.Lock()
 
+# The staleness check re-fires every 3min regardless of why the previous
+# attempt failed. If the failure is a slow/overloaded database (observed:
+# a single indexed lookup taking 30-45s instead of milliseconds), retrying
+# immediately every 3min just adds more concurrent load on top of whatever
+# is already struggling, worsening it. Back off exponentially on consecutive
+# failures so a struggling DB gets room to recover instead of getting hit
+# harder; reset to normal cadence the moment a scan actually succeeds.
+BACKOFF_BASE_SECONDS = 180
+BACKOFF_MAX_SECONDS = 1800
+_consecutive_failures = 0
+_retry_not_before: datetime | None = None
+
 
 async def run_scan(client: PolymarketClient, settings: Settings) -> None:
+    global _consecutive_failures, _retry_not_before
     if _scan_in_progress.locked():
         logger.warning("a scan is already running in this process — skipping this trigger")
+        return
+    if _retry_not_before is not None and datetime.now(UTC) < _retry_not_before:
+        logger.warning(
+            "backing off after %d consecutive failure(s) — next attempt at %s",
+            _consecutive_failures,
+            _retry_not_before,
+        )
         return
     async with _scan_in_progress:
         try:
             await asyncio.wait_for(_run_scan(client, settings), timeout=SCAN_TIMEOUT_SECONDS)
         except TimeoutError:
             logger.error("scan timed out after %ss — will retry next cycle", SCAN_TIMEOUT_SECONDS)
+            _consecutive_failures += 1
+            _retry_not_before = datetime.now(UTC) + _backoff_delay(_consecutive_failures)
         except Exception:
             logger.exception("scan failed — will retry next cycle, serving last-good cache")
+            _consecutive_failures += 1
+            _retry_not_before = datetime.now(UTC) + _backoff_delay(_consecutive_failures)
+        else:
+            _consecutive_failures = 0
+            _retry_not_before = None
+
+
+def _backoff_delay(consecutive_failures: int) -> timedelta:
+    seconds = min(BACKOFF_BASE_SECONDS * (2 ** (consecutive_failures - 1)), BACKOFF_MAX_SECONDS)
+    return timedelta(seconds=seconds)
 
 
 async def _run_scan(client: PolymarketClient, settings: Settings) -> None:
