@@ -29,8 +29,20 @@ async def lifespan(app: FastAPI):
     client = PolymarketClient(settings)
     app.state.client = client
 
-    async with get_session() as session:
-        snapshot = await repository.load_latest_snapshot(session)
+    # No try/except here used to mean a slow/unresponsive DB at exactly the
+    # moment the process boots (observed happening for real — see the same
+    # DB behind scan failures) took down the ENTIRE app, not just scans:
+    # this raises -> FastAPI startup fails -> Render restarts -> same
+    # unguarded call runs again -> crash-loops until a boot attempt gets
+    # lucky with DB timing. Degrade to an empty cache instead — the
+    # scheduler's own catch-up scan (below) retries this shortly after, and
+    # the site stays up and serving (readable via /api/health) the whole time.
+    snapshot = None
+    try:
+        async with get_session() as session:
+            snapshot = await repository.load_latest_snapshot(session)
+    except Exception:
+        logger.exception("failed to load latest scan at startup — starting with an empty cache")
     if snapshot is not None:
         cache_module.cache.refresh(snapshot)
         logger.info("cache warmed from scan %s (completed %s)", snapshot.scan_id, snapshot.last_refresh_at)
